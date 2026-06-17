@@ -112,6 +112,38 @@
 
     .hidden{ display:none !important; }
     .spinner-border{ color:var(--brand); }
+
+    /* ── Filter chips ── */
+    .filter-scroll{ display:flex; gap:6px; overflow-x:auto; padding:2px 0 10px; scrollbar-width:none; }
+    .filter-scroll::-webkit-scrollbar{ display:none; }
+    .chip{ white-space:nowrap; border:1px solid var(--line); background:var(--surface); border-radius:20px; padding:5px 14px; font-size:.78rem; color:var(--muted); cursor:pointer; transition:background .15s,border-color .15s; }
+    .chip.active{ background:var(--brand); border-color:var(--brand); color:#fff; }
+
+    /* ── Balance progress bar ── */
+    .bal-bar{ height:5px; border-radius:3px; background:var(--line); margin-top:5px; overflow:hidden; }
+    .bal-bar-fill{ height:100%; border-radius:3px; transition:width .5s ease; }
+    .bal-item{ padding:12px 0; border-bottom:1px solid var(--line); }
+    .bal-item:last-child{ border-bottom:0; }
+
+    /* ── Holiday cards ── */
+    .hol-card{ background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:8px; display:flex; align-items:center; gap:12px; }
+    .hol-card.past{ opacity:.45; }
+    .hol-date{ min-width:46px; text-align:center; background:var(--brand); color:#fff; border-radius:10px; padding:7px 4px; }
+    .hol-date .d{ font-size:1.25rem; font-weight:700; line-height:1.1; }
+    .hol-date .m{ font-size:.62rem; opacity:.9; }
+
+    /* ── Bottom sheet ── */
+    .sheet-wrap{ position:fixed; inset:0; z-index:1050; display:flex; flex-direction:column; justify-content:flex-end; pointer-events:none; }
+    .sheet-wrap.show{ pointer-events:auto; }
+    .sheet-backdrop{ position:absolute; inset:0; background:rgba(0,0,0,.45); opacity:0; transition:opacity .25s; }
+    .sheet-wrap.show .sheet-backdrop{ opacity:1; }
+    .sheet{ background:var(--surface); border-radius:22px 22px 0 0; padding:20px 16px calc(20px + env(safe-area-inset-bottom)); max-height:88vh; overflow-y:auto; transform:translateY(100%); transition:transform .3s cubic-bezier(.32,1,.46,1); position:relative; }
+    .sheet-wrap.show .sheet{ transform:translateY(0); }
+    .sheet-handle{ width:36px; height:4px; border-radius:2px; background:var(--line); margin:0 auto 16px; }
+    .det-row{ display:flex; gap:10px; margin-bottom:10px; align-items:flex-start; }
+    .det-row i{ font-size:.9rem; color:var(--muted); flex-shrink:0; width:18px; margin-top:3px; }
+    .det-lbl{ font-size:.72rem; color:var(--muted); line-height:1; margin-bottom:2px; }
+    .det-val{ font-size:.88rem; }
   </style>
 </head>
 <body>
@@ -180,7 +212,14 @@
 
     <!-- ประวัติ -->
     <div class="lf-body tab-pane hidden" id="tab-history">
-      <h6 class="mb-2">ประวัติการลา</h6>
+      <div class="filter-scroll" id="histFilter">
+        <span class="chip active" data-st="">ทั้งหมด</span>
+        <span class="chip" data-st="SUBMITTED">รออนุมัติ</span>
+        <span class="chip" data-st="L1_APPROVED">ผ่านระดับ 1</span>
+        <span class="chip" data-st="APPROVED">อนุมัติ</span>
+        <span class="chip" data-st="REJECTED">ไม่อนุมัติ</span>
+        <span class="chip" data-st="CANCELLED">ยกเลิก</span>
+      </div>
       <div id="histList"></div>
     </div>
 
@@ -189,12 +228,28 @@
       <h6 class="mb-2">วันลาคงเหลือ <small class="text-muted" id="balYear"></small></h6>
       <div class="card-soft" id="balList"></div>
     </div>
+
+    <!-- วันหยุด -->
+    <div class="lf-body tab-pane hidden" id="tab-holiday">
+      <h6 class="mb-2">วันหยุด ปี <span id="holYear"></span></h6>
+      <div id="holList"></div>
+    </div>
   </div>
 
   <div class="tabbar hidden" id="tabbar">
     <button class="on" data-tab="new"><i class="fi fi-rr-add-document"></i>ยื่นลา</button>
     <button data-tab="history"><i class="fi fi-rr-time-past"></i>ประวัติ</button>
     <button data-tab="balance"><i class="fi fi-rr-calendar-check"></i>คงเหลือ</button>
+    <button data-tab="holiday"><i class="fi fi-rr-calendar"></i>วันหยุด</button>
+  </div>
+
+  <!-- Detail bottom sheet -->
+  <div class="sheet-wrap" id="detailSheet">
+    <div class="sheet-backdrop" id="sheetBackdrop"></div>
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <div id="sheetBody"></div>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
@@ -202,7 +257,8 @@
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script>
-  var LF = { userId: null, types: [], balances: {}, be: true };
+  var LF = { userId: null, types: [], balances: {}, be: true, histStatus: '' };
+  var LF_HIST = [];
 
   var GAS_URL = 'https://script.google.com/macros/s/AKfycbx8jFUDpyvrUMeA7TqLPMjziDUoiN3qAqxP-LJNdoyRbEHonk9RNRLbL9r-movi9Qpi7w/exec';
 
@@ -272,7 +328,17 @@
       $('.tab-pane').addClass('hidden'); $('#tab-' + t).removeClass('hidden');
       if(t === 'history') loadHistory();
       if(t === 'balance') loadBalances();
+      if(t === 'holiday') loadHolidays();
     });
+
+    $('#histFilter').on('click', '.chip', function(){
+      $('#histFilter .chip').removeClass('active');
+      $(this).addClass('active');
+      LF.histStatus = $(this).data('st');
+      renderHistFiltered();
+    });
+
+    $('#sheetBackdrop').on('click', closeSheet);
   });
 
   function initLiff(){
@@ -429,24 +495,30 @@
   function loadHistory(){
     $('#histList').html(skelCards(3));
     api('liffGetHistory', LF.userId).then(function(r){
-      if(!r.data || !r.data.length){ $('#histList').html('<div class="text-center text-muted py-4">ยังไม่มีประวัติการลา\x3c/div>'); return; }
-      var html = '';
-      r.data.forEach(function(d){
-        var st = ST[d.status] || [d.status,'#94a3b8'];
-        var range = fmtBE(d.start_date) + (d.start_date !== d.end_date ? ' - ' + fmtBE(d.end_date) : '');
-        html += '<div class="hist-card">'
-          + '<div class="d-flex justify-content-between align-items-start">'
-          + '<div><b>' + esc(d.leave_type_name) + '\x3c/b><div class="no">' + esc(d.request_no) + '\x3c/div>\x3c/div>'
-          + '<span class="badge-st" style="background:' + st[1] + '22;color:' + st[1] + '">' + st[0] + '\x3c/span>\x3c/div>'
-          + '<div class="small mt-1">' + range + ' · ' + d.total_days + ' วัน\x3c/div>'
-          + (d.last_comment ? '<div class="small text-muted mt-1">หมายเหตุ: ' + esc(d.last_comment) + '\x3c/div>' : '')
-          + (d.status === 'SUBMITTED' || d.status === 'L1_APPROVED'
-            ? '<button class="btn btn-sm w-100 mt-2" style="border:1px solid #ef4444;color:#ef4444;border-radius:10px;font-size:.78rem" onclick="cancelLeave(\'' + d.id + '\')" >ยกเลิกใบลา\x3c/button>'
-            : '')
-          + '\x3c/div>';
-      });
-      $('#histList').html(html);
+      LF_HIST = r.data || [];
+      renderHistFiltered();
     }).catch(function(){ $('#histList').html('<div class="text-center text-muted py-4">โหลดข้อมูลไม่สำเร็จ\x3c/div>'); });
+  }
+
+  function renderHistFiltered(){
+    var list = LF.histStatus ? LF_HIST.filter(function(d){ return d.status === LF.histStatus; }) : LF_HIST;
+    if(!list.length){ $('#histList').html('<div class="text-center text-muted py-4">ไม่มีรายการ\x3c/div>'); return; }
+    var html = '';
+    list.forEach(function(d){
+      var st = ST[d.status] || [d.status,'#94a3b8'];
+      var range = fmtBE(d.start_date) + (d.start_date !== d.end_date ? ' - ' + fmtBE(d.end_date) : '');
+      html += '<div class="hist-card" style="cursor:pointer" onclick="showDetail(\'' + d.id + '\')">'
+        + '<div class="d-flex justify-content-between align-items-start">'
+        + '<div><b>' + esc(d.leave_type_name) + '\x3c/b><div class="no">' + esc(d.request_no) + '\x3c/div>\x3c/div>'
+        + '<span class="badge-st" style="background:' + st[1] + '22;color:' + st[1] + '">' + st[0] + '\x3c/span>\x3c/div>'
+        + '<div class="small mt-1">' + range + ' · ' + d.total_days + ' วัน\x3c/div>'
+        + (d.last_comment ? '<div class="small text-muted mt-1">หมายเหตุ: ' + esc(d.last_comment) + '\x3c/div>' : '')
+        + (d.status === 'SUBMITTED' || d.status === 'L1_APPROVED'
+          ? '<button class="btn btn-sm w-100 mt-2" style="border:1px solid #ef4444;color:#ef4444;border-radius:10px;font-size:.78rem" onclick="event.stopPropagation();cancelLeave(\'' + d.id + '\')">ยกเลิกใบลา\x3c/button>'
+          : '')
+        + '\x3c/div>';
+    });
+    $('#histList').html(html);
   }
 
   function cancelLeave(leaveId){
@@ -474,11 +546,99 @@
       if(!r.data || !r.data.length){ $('#balList').html('<div class="text-center text-muted py-3">ยังไม่มีข้อมูลโควตา\x3c/div>'); return; }
       var html = '';
       r.data.forEach(function(b){
-        html += '<div class="bal-item"><div><span class="bal-dot" style="background:' + b.color + '">\x3c/span>' + esc(b.name) + '\x3c/div>'
-          + '<div class="bal-num text-end"><b>' + b.remaining + '\x3c/b> <span>/ ' + b.entitled + ' วัน\x3c/span>\x3c/div>\x3c/div>';
+        var pct = b.entitled > 0 ? Math.min(100, Math.round((b.entitled - b.remaining) / b.entitled * 100)) : 0;
+        var unlimited = Number(b.entitled) === 0;
+        html += '<div class="bal-item">'
+          + '<div class="d-flex justify-content-between align-items-center">'
+          + '<div><span class="bal-dot" style="background:' + b.color + ';width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:middle">\x3c/span>'
+          + '<span style="font-size:.9rem">' + esc(b.name) + '\x3c/span>\x3c/div>'
+          + '<div class="text-end"><b style="font-size:1.1rem">' + b.remaining + '\x3c/b>'
+          + ' <span style="font-size:.76rem;color:var(--muted)">/ ' + (unlimited ? '∞' : b.entitled) + ' วัน\x3c/span>\x3c/div>\x3c/div>'
+          + (!unlimited ? '<div class="bal-bar mt-1"><div class="bal-bar-fill" style="width:' + pct + '%;background:' + b.color + '">\x3c/div>\x3c/div>' : '')
+          + '\x3c/div>';
       });
       $('#balList').html(html);
     }).catch(function(){ $('#balList').html('<div class="text-center text-muted py-3">โหลดข้อมูลไม่สำเร็จ\x3c/div>'); });
+  }
+  /* ── Detail bottom sheet ── */
+  function showDetail(id){
+    var cached = LF_HIST.filter(function(d){ return d.id === id; })[0];
+    $('#sheetBody').html(
+      cached ? buildDetailHtml(cached, true) :
+      '<div class="text-center py-5"><div class="spinner-border" style="width:28px;height:28px;border-width:3px"></div>\x3c/div>'
+    );
+    $('#detailSheet').addClass('show');
+    api('liffGetLeaveDetail', LF.userId, id).then(function(r){
+      if(r.status !== 'success'){ $('#sheetBody').html('<div class="text-center text-muted py-4">' + esc(r.message||'ไม่พบข้อมูล') + '\x3c/div>'); return; }
+      $('#sheetBody').html(buildDetailHtml(r.data, false));
+    }).catch(function(){ if(!cached) $('#sheetBody').html('<div class="text-center text-muted py-4">โหลดข้อมูลไม่สำเร็จ\x3c/div>'); });
+  }
+
+  function buildDetailHtml(d, slim){
+    var st = ST[d.status] || [d.status,'#94a3b8'];
+    var range = fmtBE(d.start_date) + (d.start_date !== d.end_date ? ' - ' + fmtBE(d.end_date) : '');
+    var modeLabel = d.start_half === 'morning' ? 'ครึ่งวันเช้า' : (d.start_half === 'afternoon' ? 'ครึ่งวันบ่าย' : 'เต็มวัน');
+    var h = '<div class="d-flex justify-content-between align-items-center mb-2">'
+      + '<b style="font-size:1rem">' + esc(d.leave_type_name) + '\x3c/b>'
+      + '<span class="badge-st" style="background:' + st[1] + '22;color:' + st[1] + '">' + st[0] + '\x3c/span>\x3c/div>'
+      + '<div class="small text-muted mb-3" style="font-size:.76rem">เลขที่ ' + esc(d.request_no||'') + '\x3c/div>'
+      + detRow('fi-rr-calendar', 'ช่วงวันลา', range + ' (' + d.total_days + ' วัน)')
+      + detRow('fi-rr-clock', 'รูปแบบ', modeLabel);
+    if(!slim){
+      if(d.reason) h += detRow('fi-rr-memo', 'เหตุผล', d.reason);
+      if(d.contact_during_leave) h += detRow('fi-rr-phone-call', 'ผู้ติดต่อ', d.contact_during_leave);
+      if(d.approved_by_name) h += detRow('fi-rr-user', 'อนุมัติโดย', d.approved_by_name);
+      if(d.last_comment) h += detRow('fi-rr-comment', 'ความเห็น', d.last_comment);
+      if(d.created_at) h += detRow('fi-rr-time-add', 'ยื่นเมื่อ', fmtBE(d.created_at.substring(0,10)));
+      if(d.attachment_url){
+        h += '<a href="' + d.attachment_url + '" target="_blank" class="d-flex align-items-center gap-2 mt-2 mb-1" '
+          + 'style="border:1px solid var(--brand);color:var(--brand);border-radius:10px;padding:8px 14px;font-size:.85rem;text-decoration:none">'
+          + '<i class="fi fi-rr-clip">\x3c/i>ดูเอกสารแนบ\x3c/a>';
+      }
+    }
+    if(d.status === 'SUBMITTED' || d.status === 'L1_APPROVED'){
+      h += '<button class="btn btn-sm w-100 mt-3" style="border:1px solid #ef4444;color:#ef4444;border-radius:10px" '
+        + 'onclick="closeSheet();setTimeout(function(){cancelLeave(\'' + d.id + '\')},220)">ยกเลิกใบลา\x3c/button>';
+    }
+    return h;
+  }
+
+  function detRow(icon, label, value){
+    return '<div class="det-row"><i class="fi ' + icon + '">\x3c/i><div><div class="det-lbl">' + label + '\x3c/div><div class="det-val">' + esc(String(value||'')) + '\x3c/div>\x3c/div>\x3c/div>';
+  }
+
+  function closeSheet(){
+    $('#detailSheet').removeClass('show');
+  }
+
+  /* ── Holidays tab ── */
+  function loadHolidays(){
+    var year = new Date().getFullYear();
+    $('#holYear').text(year + (LF.be ? 543 : 0));
+    $('#holList').html(skelCards(4));
+    api('liffGetHolidays', year).then(function(r){
+      var list = r.data || [];
+      if(!list.length){ $('#holList').html('<div class="text-center text-muted py-4">ไม่มีข้อมูลวันหยุด\x3c/div>'); return; }
+      var TH_M = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+      var today = new Date().toISOString().substring(0,10);
+      var html = '';
+      list.forEach(function(h){
+        var p = h.date.split('-');
+        var isPast = h.date < today;
+        var isToday = h.date === today;
+        html += '<div class="hol-card' + (isPast?' past':'') + '">'
+          + '<div class="hol-date" style="' + (isToday?'background:#ef4444':'') + '">'
+          + '<div class="d">' + Number(p[2]) + '\x3c/div>'
+          + '<div class="m">' + TH_M[Number(p[1])-1] + '\x3c/div>\x3c/div>'
+          + '<div style="flex:1">'
+          + '<div style="font-size:.9rem;font-weight:500">' + esc(h.name) + '\x3c/div>'
+          + '<div class="small" style="color:var(--muted);font-size:.74rem">'
+          + (h.type==='company'?'วันหยุดบริษัท':'วันหยุดราชการ')
+          + (isToday?' · <b style="color:#ef4444">วันนี้\x3c/b>':'')
+          + '\x3c/div>\x3c/div>\x3c/div>';
+      });
+      $('#holList').html(html);
+    }).catch(function(){ $('#holList').html('<div class="text-center text-muted py-3">โหลดข้อมูลไม่สำเร็จ\x3c/div>'); });
   }
   </script>
 </body>
