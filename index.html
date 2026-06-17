@@ -17,21 +17,50 @@
     }
     *{ font-family:'Prompt',sans-serif; -webkit-tap-highlight-color:transparent; }
     body{ background:var(--bg); color:var(--ink); margin:0; padding-bottom:78px; }
+
+    /* ── Splash / initial loading ── */
+    .lf-splash{
+      position:fixed; inset:0; z-index:9999;
+      background:linear-gradient(150deg, var(--brand) 0%, var(--brand-700) 100%);
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      transition:opacity .45s ease, visibility .45s ease;
+    }
+    .lf-splash.fade-out{ opacity:0; visibility:hidden; pointer-events:none; }
+    .splash-logo{
+      width:76px; height:76px; border-radius:22px;
+      background:var(--accent); display:grid; place-items:center; overflow:hidden;
+      box-shadow:0 10px 36px rgba(0,0,0,.25);
+      animation:pop-in .55s cubic-bezier(.34,1.56,.64,1) both;
+    }
+    .splash-logo i{ color:var(--brand-700); font-size:34px; }
+    .splash-logo img{ width:100%; height:100%; object-fit:cover; }
+    .splash-title{ color:#fff; font-size:1.2rem; font-weight:600; margin:18px 0 4px; animation:fade-up .5s .15s both; }
+    .splash-sub{ color:rgba(255,255,255,.72); font-size:.82rem; margin:0 0 28px; animation:fade-up .5s .25s both; }
+    .dots{ display:flex; gap:7px; animation:fade-up .5s .35s both; }
+    .dots span{
+      width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,.65);
+      animation:dot-bounce .9s ease-in-out infinite;
+    }
+    .dots span:nth-child(2){ animation-delay:.18s; }
+    .dots span:nth-child(3){ animation-delay:.36s; }
+    @keyframes dot-bounce{ 0%,60%,100%{ transform:translateY(0); opacity:.5; } 30%{ transform:translateY(-9px); opacity:1; } }
+    @keyframes pop-in{ from{ transform:scale(.55); opacity:0; } to{ transform:scale(1); opacity:1; } }
+    @keyframes fade-up{ from{ transform:translateY(10px); opacity:0; } to{ transform:translateY(0); opacity:1; } }
+
+    /* ── Header ── */
     .lf-header{ background:var(--brand); color:#fff; padding:18px 18px 16px; display:flex; align-items:center; gap:12px; }
     .lf-logo{ width:42px; height:42px; border-radius:12px; background:var(--accent); display:grid; place-items:center; overflow:hidden; }
     .lf-logo i{ color:var(--brand-700); font-size:20px; } .lf-logo img{ width:100%; height:100%; object-fit:cover; }
     .lf-header h1{ font-size:1.05rem; margin:0; font-weight:600; }
     .lf-header small{ opacity:.85; font-size:.78rem; }
+
+    /* ── Layout ── */
     .lf-body{ padding:16px; }
     .card-soft{ background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:16px; margin-bottom:12px; box-shadow:0 1px 3px rgba(30,41,90,.05); }
-    .btn-accent{ background:var(--accent); border:0; color:var(--brand-700); font-weight:600; border-radius:12px; padding:.7rem; }
-    .btn-accent:active{ background:var(--accent-700); color:#fff; }
     .form-control,.form-select{ border-radius:12px; padding:.6rem .8rem; }
     .form-label{ font-size:.84rem; color:var(--muted); margin-bottom:.25rem; }
-    .tabbar{ position:fixed; bottom:0; left:0; right:0; background:#fff; border-top:1px solid var(--line); display:flex; padding:6px 0 calc(6px + env(safe-area-inset-bottom)); }
-    .tabbar button{ flex:1; background:none; border:0; color:var(--muted); font-size:.72rem; padding:6px 0; display:flex; flex-direction:column; align-items:center; gap:3px; }
-    .tabbar button i{ font-size:19px; }
-    .tabbar button.on{ color:var(--brand); }
+    .day-pill{ background:oklch(0.96 0.02 264); border-radius:10px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; }
+    .seg{ display:flex; gap:6px; } .seg .form-check{ flex:1; }
     .bal-item{ display:flex; align-items:center; justify-content:space-between; padding:11px 0; border-bottom:1px solid var(--line); }
     .bal-item:last-child{ border-bottom:0; }
     .bal-dot{ width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:8px; vertical-align:middle; }
@@ -39,15 +68,61 @@
     .badge-st{ font-size:.72rem; padding:.3rem .6rem; border-radius:8px; }
     .hist-card{ background:#fff; border:1px solid var(--line); border-radius:14px; padding:13px 14px; margin-bottom:10px; }
     .hist-card .no{ font-size:.74rem; color:var(--muted); }
-    .day-pill{ background:oklch(0.96 0.02 264); border-radius:10px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; }
-    .seg{ display:flex; gap:6px; } .seg .form-check{ flex:1; }
-    .loading{ position:fixed; inset:0; background:rgba(255,255,255,.85); display:grid; place-items:center; z-index:999; }
-    .spinner-border{ color:var(--brand); }
+
+    /* ── Tabbar ── */
+    .tabbar{ position:fixed; bottom:0; left:0; right:0; background:#fff; border-top:1px solid var(--line); display:flex; padding:6px 0 calc(6px + env(safe-area-inset-bottom)); }
+    .tabbar button{ flex:1; background:none; border:0; color:var(--muted); font-size:.72rem; padding:6px 0; display:flex; flex-direction:column; align-items:center; gap:3px; }
+    .tabbar button i{ font-size:19px; }
+    .tabbar button.on{ color:var(--brand); }
+
+    /* ── Button loading (CSS-only) ── */
+    .btn-accent{ background:var(--accent); border:0; color:var(--brand-700); font-weight:600; border-radius:12px; padding:.7rem; transition:background .15s; }
+    .btn-accent:active{ background:var(--accent-700); color:#fff; }
+    .btn-loading{ position:relative; color:transparent !important; pointer-events:none; opacity:.85; }
+    .btn-loading::after{
+      content:''; position:absolute;
+      width:18px; height:18px; top:50%; left:50%; margin:-9px 0 0 -9px;
+      border:2.5px solid var(--brand-700); border-top-color:transparent;
+      border-radius:50%; animation:spin .7s linear infinite;
+    }
+    @keyframes spin{ to{ transform:rotate(360deg); } }
+
+    /* ── Skeleton ── */
+    .skeleton{
+      background:linear-gradient(90deg, var(--line) 25%, oklch(0.95 0.01 265) 50%, var(--line) 75%);
+      background-size:300% 100%; border-radius:8px;
+      animation:shimmer 1.3s ease-in-out infinite;
+    }
+    @keyframes shimmer{ from{ background-position:100%; } to{ background-position:-100%; } }
+    .skel-card{ background:#fff; border:1px solid var(--line); border-radius:14px; padding:13px 14px; margin-bottom:10px; }
+    .skel-line{ height:11px; margin-bottom:8px; }
+    .skel-line:last-child{ margin-bottom:0; }
+    .skel-row{ height:42px; border-radius:8px; margin-bottom:8px; }
+
+    /* ── Upload progress ── */
+    .upload-wrap{ position:relative; }
+    .upload-status{ display:flex; align-items:center; gap:6px; font-size:.82rem; min-height:20px; margin-top:4px; }
+    .upload-status .spin-sm{
+      width:13px; height:13px; border:2px solid var(--brand); border-top-color:transparent;
+      border-radius:50%; animation:spin .7s linear infinite; flex-shrink:0;
+    }
+    .upload-bar{ height:3px; border-radius:3px; background:var(--line); margin-top:5px; overflow:hidden; display:none; }
+    .upload-bar-fill{ height:100%; background:var(--brand); border-radius:3px; animation:upload-pulse 1.4s ease-in-out infinite; }
+    @keyframes upload-pulse{ 0%,100%{ opacity:1; width:30%; margin-left:0; } 50%{ opacity:.8; width:60%; margin-left:40%; } }
+
     .hidden{ display:none !important; }
+    .spinner-border{ color:var(--brand); }
   </style>
 </head>
 <body>
-  <div class="loading" id="lfLoading"><div class="spinner-border"></div></div>
+
+  <!-- Splash / loading -->
+  <div class="lf-splash" id="lfLoading">
+    <div class="splash-logo"><img id="splashLogo" class="hidden"><i class="fi fi-rr-following" id="splashIcon"></i></div>
+    <div class="splash-title" id="splashTitle">ระบบลาออนไลน์</div>
+    <div class="splash-sub" id="splashSub">กำลังโหลด...</div>
+    <div class="dots"><span></span><span></span><span></span></div>
+  </div>
 
   <div class="lf-header">
     <div class="lf-logo"><img id="lfLogo" class="hidden"><i class="fi fi-rr-following" id="lfLogoIcon"></i></div>
@@ -93,8 +168,11 @@
         <label class="form-label">ผู้ติดต่อระหว่างลา</label>
         <input class="form-control mb-2" id="nlContact">
         <label class="form-label">เอกสารแนบ <span class="text-danger" id="nlAttachReq"></span></label>
-        <input type="file" class="form-control mb-1" id="nlAttach" accept="image/*,application/pdf">
-        <small class="text-muted" id="nlAttachStatus"></small>
+        <div class="upload-wrap">
+          <input type="file" class="form-control mb-1" id="nlAttach" accept="image/*,application/pdf">
+          <div class="upload-bar" id="uploadBar"><div class="upload-bar-fill"></div></div>
+          <div class="upload-status" id="nlAttachStatus"></div>
+        </div>
         <input type="hidden" id="nlAttachId">
         <button class="btn btn-accent w-100 mt-3" id="btnSubmitLeave">ยื่นใบลา</button>
       </div>
@@ -126,20 +204,51 @@
   <script>
   var LF = { userId: null, types: [], balances: {}, be: true };
 
-  // ⚠️ วาง GAS Web App exec URL ตรงนี้ (Deploy → exec URL ลงท้าย /exec ไม่ต้องมี ?page=liff)
   var GAS_URL = 'https://script.google.com/macros/s/AKfycbx8jFUDpyvrUMeA7TqLPMjziDUoiN3qAqxP-LJNdoyRbEHonk9RNRLbL9r-movi9Qpi7w/exec';
 
   function api(fn){
     var args = Array.prototype.slice.call(arguments, 1);
     return fetch(GAS_URL, {
       method: 'POST',
-      // body เป็น string + ไม่ตั้ง Content-Type เอง → fetch ใช้ text/plain → ไม่เกิด CORS preflight
       body: JSON.stringify({ fn: fn, args: args })
     }).then(function(r){ return r.json(); }).then(function(j){
       if(j && j.ok) return j.data;
       throw new Error(j && j.error ? j.error : 'API error');
     });
   }
+
+  /* ── Loading helpers ── */
+  function splashHide(){
+    $('#lfLoading').addClass('fade-out');
+    // ลบออกจาก DOM หลัง transition เสร็จ
+    setTimeout(function(){ $('#lfLoading').addClass('hidden'); }, 480);
+  }
+  function setBtnLoading(sel, on){
+    if(on) $(sel).addClass('btn-loading').prop('disabled', true);
+    else   $(sel).removeClass('btn-loading').prop('disabled', false);
+  }
+  function skelCards(n){
+    var h = '';
+    for(var i=0;i<n;i++){
+      h += '<div class="skel-card">'
+         + '<div style="display:flex;justify-content:space-between">'
+         + '<div class="skeleton skel-line" style="width:55%"></div>'
+         + '<div class="skeleton skel-line" style="width:22%"></div>\x3c/div>'
+         + '<div class="skeleton skel-line" style="width:38%"></div>'
+         + '<div class="skeleton skel-line" style="width:70%;margin-bottom:0"></div>'
+         + '\x3c/div>';
+    }
+    return h;
+  }
+  function skelRows(n){
+    var h = '';
+    for(var i=0;i<n;i++){
+      h += '<div class="skeleton skel-row"></div>';
+    }
+    return h;
+  }
+
+  /* ── Utils ── */
   function fmtBE(iso){
     if(!iso) return '-';
     var p = iso.split('-');
@@ -169,10 +278,13 @@
   function initLiff(){
     api('liffGetConfig').then(function(c){
       LF.be = c.buddhist_era;
-      $('#lfTitle').text(c.app_name);
-      if(c.logo_url){ $('#lfLogo').attr('src', c.logo_url).removeClass('hidden'); $('#lfLogoIcon').addClass('hidden'); }
+      $('#lfTitle, #splashTitle').text(c.app_name);
+      if(c.logo_url){
+        $('#lfLogo').attr('src', c.logo_url).removeClass('hidden'); $('#lfLogoIcon').addClass('hidden');
+        $('#splashLogo').attr('src', c.logo_url).removeClass('hidden'); $('#splashIcon').addClass('hidden');
+      }
       if(!c.liff_id){
-        $('#lfLoading').addClass('hidden');
+        splashHide();
         $('#lfSub').text('ยังไม่ได้ตั้งค่า LIFF');
         Swal.fire({ icon:'warning', title:'ยังไม่ได้ตั้งค่า LIFF ID', text:'กรุณาตั้งค่าในระบบหลังบ้าน' });
         return;
@@ -184,14 +296,15 @@
         if(!profile) return;
         LF.userId = profile.userId;
         $('#lfSub').text(profile.displayName || '');
+        $('#splashSub').text(profile.displayName || '');
         checkLink();
       }).catch(function(err){
-        $('#lfLoading').addClass('hidden');
+        splashHide();
         $('#lfSub').text('เปิดผ่าน LINE เท่านั้น');
         Swal.fire({ icon:'error', title:'เริ่มต้น LIFF ไม่สำเร็จ', text:String(err) });
       });
     }).catch(function(err){
-      $('#lfLoading').addClass('hidden');
+      splashHide();
       $('#lfSub').text('โหลดการตั้งค่าไม่สำเร็จ');
       Swal.fire({ icon:'error', title:'โหลดการตั้งค่าไม่สำเร็จ', text:String(err) });
     });
@@ -199,7 +312,7 @@
 
   function checkLink(){
     api('getEmployeeByLineId', LF.userId).then(function(r){
-      $('#lfLoading').addClass('hidden');
+      splashHide();
       if(r.status === 'success' && r.linked){
         $('#lfSub').text(r.employee.name);
         showApp();
@@ -207,7 +320,7 @@
         $('#viewLink').removeClass('hidden');
       }
     }).catch(function(err){
-      $('#lfLoading').addClass('hidden');
+      splashHide();
       $('#viewLink').removeClass('hidden');
       toast('error', 'เชื่อมต่อระบบไม่สำเร็จ: ' + String(err));
     });
@@ -217,16 +330,16 @@
     var code = $('#linkCode').val().trim();
     var phone = $('#linkPhone').val().trim();
     if(!code || !phone){ toast('error','กรอกข้อมูลให้ครบ'); return; }
-    $('#btnLink').prop('disabled', true).text('กำลังเชื่อมต่อ...');
+    setBtnLoading('#btnLink', true);
     api('linkLineAccount', code, phone, LF.userId).then(function(r){
-      $('#btnLink').prop('disabled', false).text('เชื่อมต่อ');
+      setBtnLoading('#btnLink', false);
       if(r.status === 'success'){
         $('#viewLink').addClass('hidden');
         $('#lfSub').text(r.employee.name);
         Swal.fire({ icon:'success', title:'เชื่อมต่อสำเร็จ', timer:1500, showConfirmButton:false });
         showApp();
       } else { toast('error', r.message); }
-    });
+    }).catch(function(){ setBtnLoading('#btnLink', false); toast('error','เชื่อมต่อไม่สำเร็จ'); });
   }
 
   function showApp(){
@@ -264,6 +377,7 @@
     var end = $('#nlEnd').val();
     if(!start || !end){ $('#nlDays').text('-'); return; }
     var sh = mode !== 'full' ? mode : 'full';
+    $('#nlDays').html('<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--brand-700);border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle"></span>');
     api('liffPreviewDays', start, end, sh, sh).then(function(r){ $('#nlDays').text(r.days); });
   }
 
@@ -272,10 +386,19 @@
     if(file.size > 5*1024*1024){ toast('error','ไฟล์ใหญ่เกิน 5MB'); return; }
     var reader = new FileReader();
     reader.onload = function(e){
-      $('#nlAttachStatus').text('กำลังอัพโหลด...');
+      $('#nlAttachStatus').html('<span class="spin-sm"></span><span>กำลังอัพโหลด...</span>');
+      $('#uploadBar').show();
       api('liffUploadAttachment', LF.userId, e.target.result.split(',')[1], file.name, file.type).then(function(r){
-        if(r.status === 'success'){ $('#nlAttachId').val(r.file_id); $('#nlAttachStatus').text('แนบไฟล์แล้ว'); }
-        else { $('#nlAttachStatus').text('อัพโหลดไม่สำเร็จ'); }
+        $('#uploadBar').hide();
+        if(r.status === 'success'){
+          $('#nlAttachId').val(r.file_id);
+          $('#nlAttachStatus').html('<i class="fi fi-rr-check-circle" style="color:#10b981"></i><span>แนบไฟล์แล้ว</span>');
+        } else {
+          $('#nlAttachStatus').html('<i class="fi fi-rr-cross-circle" style="color:#ef4444"></i><span>อัพโหลดไม่สำเร็จ</span>');
+        }
+      }).catch(function(){
+        $('#uploadBar').hide();
+        $('#nlAttachStatus').html('<i class="fi fi-rr-cross-circle" style="color:#ef4444"></i><span>อัพโหลดไม่สำเร็จ</span>');
       });
     };
     reader.readAsDataURL(file);
@@ -291,20 +414,20 @@
       contact_during_leave: $('#nlContact').val().trim(),
       attachment_file_ids: $('#nlAttachId').val() ? [$('#nlAttachId').val()] : []
     };
-    $('#btnSubmitLeave').prop('disabled', true).text('กำลังส่ง...');
+    setBtnLoading('#btnSubmitLeave', true);
     api('liffSubmitLeave', LF.userId, obj).then(function(r){
-      $('#btnSubmitLeave').prop('disabled', false).text('ยื่นใบลา');
+      setBtnLoading('#btnSubmitLeave', false);
       if(r.status === 'success'){
         Swal.fire({ icon:'success', title:'ยื่นใบลาแล้ว', text:r.request_no, timer:1800, showConfirmButton:false });
-        $('#nlReason').val(''); $('#nlContact').val(''); $('#nlAttachId').val(''); $('#nlAttach').val(''); $('#nlAttachStatus').text('');
-        $('#nlDays').text('-');
+        $('#nlReason').val(''); $('#nlContact').val(''); $('#nlAttachId').val(''); $('#nlAttach').val('');
+        $('#nlAttachStatus').html(''); $('#uploadBar').hide(); $('#nlDays').text('-');
         loadBalanceMap(onTypeChange);
       } else { toast('error', r.message); }
-    });
+    }).catch(function(){ setBtnLoading('#btnSubmitLeave', false); toast('error','ส่งใบลาไม่สำเร็จ'); });
   }
 
   function loadHistory(){
-    $('#histList').html('<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm">\x3c/div>\x3c/div>');
+    $('#histList').html(skelCards(3));
     api('liffGetHistory', LF.userId).then(function(r){
       if(!r.data || !r.data.length){ $('#histList').html('<div class="text-center text-muted py-4">ยังไม่มีประวัติการลา\x3c/div>'); return; }
       var html = '';
@@ -320,10 +443,11 @@
           + '\x3c/div>';
       });
       $('#histList').html(html);
-    });
+    }).catch(function(){ $('#histList').html('<div class="text-center text-muted py-4">โหลดข้อมูลไม่สำเร็จ\x3c/div>'); });
   }
 
   function loadBalances(){
+    $('#balList').html(skelRows(4));
     api('liffGetBalances', LF.userId).then(function(r){
       $('#balYear').text('ปี ' + (r.year + (LF.be ? 543 : 0)));
       if(!r.data || !r.data.length){ $('#balList').html('<div class="text-center text-muted py-3">ยังไม่มีข้อมูลโควตา\x3c/div>'); return; }
@@ -333,7 +457,7 @@
           + '<div class="bal-num text-end"><b>' + b.remaining + '\x3c/b> <span>/ ' + b.entitled + ' วัน\x3c/span>\x3c/div>\x3c/div>';
       });
       $('#balList').html(html);
-    });
+    }).catch(function(){ $('#balList').html('<div class="text-center text-muted py-3">โหลดข้อมูลไม่สำเร็จ\x3c/div>'); });
   }
   </script>
 </body>
