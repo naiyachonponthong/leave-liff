@@ -440,10 +440,31 @@
           + '<span class="badge-st" style="background:' + st[1] + '22;color:' + st[1] + '">' + st[0] + '\x3c/span>\x3c/div>'
           + '<div class="small mt-1">' + range + ' · ' + d.total_days + ' วัน\x3c/div>'
           + (d.last_comment ? '<div class="small text-muted mt-1">หมายเหตุ: ' + esc(d.last_comment) + '\x3c/div>' : '')
+          + (d.status === 'SUBMITTED' || d.status === 'L1_APPROVED'
+            ? '<button class="btn btn-sm w-100 mt-2" style="border:1px solid #ef4444;color:#ef4444;border-radius:10px;font-size:.78rem" onclick="cancelLeave(\'' + d.id + '\')" >ยกเลิกใบลา\x3c/button>'
+            : '')
           + '\x3c/div>';
       });
       $('#histList').html(html);
     }).catch(function(){ $('#histList').html('<div class="text-center text-muted py-4">โหลดข้อมูลไม่สำเร็จ\x3c/div>'); });
+  }
+
+  function cancelLeave(leaveId){
+    Swal.fire({ title:'ยกเลิกใบลา?', text:'ใบลานี้จะถูกยกเลิกและไม่สามารถกู้คืนได้', icon:'warning',
+      showCancelButton:true, confirmButtonText:'ยืนยันยกเลิก', cancelButtonText:'ไม่ยกเลิก',
+      confirmButtonColor:'#ef4444'
+    }).then(function(res){
+      if(!res.isConfirmed) return;
+      Swal.fire({ title:'กำลังยกเลิก...', didOpen:function(){ Swal.showLoading(); }, allowOutsideClick:false });
+      api('liffCancelLeave', LF.userId, leaveId).then(function(r){
+        Swal.close();
+        if(r.status === 'success'){
+          toast('success', r.message);
+          loadHistory();
+          loadBalanceMap(onTypeChange);
+        } else { toast('error', r.message); }
+      }).catch(function(){ Swal.close(); toast('error','ยกเลิกไม่สำเร็จ'); });
+    });
   }
 
   function loadBalances(){
