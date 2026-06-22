@@ -1,0 +1,109 @@
+<script>
+/* ============================================================
+   DASHBOARD — KPIs + Chart.js donut + monthly bar + today list
+   ============================================================ */
+var DASH = { donut: null, monthly: null };
+var TH_MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+
+window.PAGE_HOOKS.dashboard = function(){
+  api('getDashboardData', APP.token).then(function(r){
+    if(r.status !== 'success') return;
+    var k = r.kpis;
+    $('#kpiPending').text(k.pending_approval);
+    $('#kpiToday').text(k.on_leave_today);
+    $('#kpiMonth').text(k.leave_this_month);
+    $('#kpiEmployees').text(k.total_employees);
+    $('#dashYear').text('ปี ' + (r.year + 543));
+    renderDonut(r.donut);
+    renderMonthly(r.monthly);
+    renderTodayList(r.today_list);
+    renderWeekCal(r.week_list || []);
+    if(window.refreshApprovalBadge){ refreshApprovalBadge(); }
+  });
+};
+
+function renderDonut(data){
+  if(DASH.donut){ DASH.donut.destroy(); DASH.donut = null; }
+  if(!data || !data.length){
+    $('#donutWrap').addClass('d-none'); $('#donutEmpty').removeClass('d-none'); return;
+  }
+  $('#donutWrap').removeClass('d-none'); $('#donutEmpty').addClass('d-none');
+  var ctx = document.getElementById('chartDonut').getContext('2d');
+  DASH.donut = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: data.map(function(d){ return d.name; }),
+      datasets: [{ data: data.map(function(d){ return d.days; }),
+        backgroundColor: data.map(function(d){ return d.color; }), borderWidth: 2, borderColor: '#fff' }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '62%',
+      plugins: {
+        legend: { position: 'right', labels: { font: { family: 'Prompt' }, boxWidth: 12, padding: 10 } },
+        tooltip: { callbacks: { label: function(c){ return c.label + ': ' + c.parsed + ' วัน'; } } }
+      }
+    }
+  });
+}
+
+function renderMonthly(arr){
+  if(DASH.monthly){ DASH.monthly.destroy(); DASH.monthly = null; }
+  var ctx = document.getElementById('chartMonthly').getContext('2d');
+  DASH.monthly = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: TH_MONTHS,
+      datasets: [{ label: 'วันลา', data: arr || [], backgroundColor: '#3b3f9e', borderRadius: 6, maxBarThickness: 26 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { family: 'Prompt', size: 10 } } },
+        y: { beginAtZero: true, ticks: { precision: 0, font: { family: 'Prompt' } } }
+      }
+    }
+  });
+}
+
+function renderTodayList(list){
+  $('#todayCount').text((list || []).length + ' คน');
+  var html = '';
+  if(!list || !list.length){ html = '<tr><td colspan="4" class="text-center text-muted py-4">ไม่มีพนักงานลาวันนี้\x3c/td>\x3c/tr>'; }
+  (list || []).forEach(function(d){
+    var range = fmtDateBE(d.start_date) + (d.start_date !== d.end_date ? ' - ' + fmtDateBE(d.end_date) : '');
+    html += '<tr>'
+      + '<td>' + _esc(d.employee_name) + '\x3c/td>'
+      + '<td><span class="lt-color" style="background:' + d.color + '">\x3c/span>' + _esc(d.leave_type_name) + '\x3c/td>'
+      + '<td>' + range + '\x3c/td>'
+      + '<td class="text-center">' + d.total_days + '\x3c/td>'
+      + '\x3c/tr>';
+  });
+  $('#todayLeaveList').html(html);
+}
+
+function renderWeekCal(weekList){
+  var today = new Date();
+  var dow = today.getDay(); // 0=Sun
+  var monday = new Date(today); monday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+  var TH_DOW = ['จ','อ','พ','พฤ','ศ','ส','อา'];
+  var html = '';
+  for(var i=0;i<7;i++){
+    var d = new Date(monday); d.setDate(monday.getDate() + i);
+    var iso = d.toISOString().substring(0,10);
+    var isToday = iso === today.toISOString().substring(0,10);
+    var dayOfWeek = (d.getDay() + 6) % 7; // Mon=0
+    var onLeave = weekList.filter(function(r){ return r.start_date <= iso && r.end_date >= iso; });
+    html += '<div style="flex:1;min-width:80px;padding:8px 6px;border-right:1px solid var(--line);'
+      + (isToday ? 'background:var(--brand-050)' : '') + '">'
+      + '<div style="font-size:.72rem;font-weight:600;color:' + (isToday?'var(--brand)':'var(--muted)') + ';text-align:center;margin-bottom:6px">'
+      + TH_DOW[dayOfWeek] + ' ' + (d.getDate()) + '\x3c/div>';
+    if(!onLeave.length){ html += '<div style="font-size:.7rem;color:var(--muted);text-align:center">-\x3c/div>'; }
+    onLeave.forEach(function(r){
+      html += '<div style="font-size:.68rem;padding:2px 5px;border-radius:5px;margin-bottom:3px;background:' + (r.color||'#64748b') + '22;color:' + (r.color||'#64748b') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + r.employee_name + '">' + r.employee_name + '\x3c/div>';
+    });
+    html += '\x3c/div>';
+  }
+  $('#weekCal').html(html);
+}
+</script>

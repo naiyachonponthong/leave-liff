@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#3b3f9e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ระบบลาออนไลน์">
+  <title>ระบบลาออนไลน์</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/2.6.0/uicons-regular-rounded/css/uicons-regular-rounded.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
+
+  <?!= include('css'); ?>
+</head>
+<body>
+
+  <!-- ============================================================
+       LOGIN VIEW
+       ============================================================ -->
+  <div id="view-login" class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-head">
+        <div class="auth-logo">
+          <img class="brand-logo d-none" alt="logo">
+          <i class="fi fi-rr-following brand-logo-fallback"></i>
+        </div>
+        <h1 class="brand-name">ระบบลาออนไลน์</h1>
+        <p>ยื่นลา · อนุมัติ · ติดตามสถานะ ผ่าน LINE</p>
+      </div>
+      <div class="auth-body">
+        <form id="loginForm" autocomplete="off">
+          <div class="mb-3">
+            <label class="form-label">ชื่อผู้ใช้</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="fi fi-rr-user"></i></span>
+              <input type="text" class="form-control" id="username" placeholder="username" required>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">รหัสผ่าน</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="fi fi-rr-lock"></i></span>
+              <input type="password" class="form-control" id="pw" placeholder="••••••••" required>
+              <button class="btn btn-toggle" type="button" id="togglePw"><i class="fi fi-rr-eye"></i></button>
+            </div>
+          </div>
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="remember">
+              <label class="form-check-label auth-foot" for="remember">จดจำการเข้าสู่ระบบ</label>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-accent w-100 py-2" id="btnLogin">เข้าสู่ระบบ</button>
+        </form>
+        <div class="text-center mt-3 auth-foot">
+          เวอร์ชัน <span class="app-ver">1.0</span> · Google Apps Script
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       APP VIEW
+       ============================================================ -->
+  <div id="view-app" class="d-none">
+
+    <!-- topbar -->
+    <div class="topbar">
+      <button class="btn btn-ghost d-md-none px-2 py-1" id="btnMenu"><i class="fi fi-rr-menu-burger"></i></button>
+      <div class="brand">
+        <div class="brand-mark">
+          <img class="brand-logo d-none" alt="logo">
+          <i class="fi fi-rr-following brand-logo-fallback"></i>
+        </div>
+        <span class="brand-name d-none d-sm-inline">ระบบลาออนไลน์</span>
+      </div>
+      <div class="ms-auto dropdown">
+        <button class="btn btn-ghost px-2 py-1 me-1" id="btnTheme" title="สลับธีม"><i class="fi fi-rr-moon-stars"></i></button>
+        <div class="user-chip d-inline-flex" data-bs-toggle="dropdown">
+          <div class="user-avatar" id="userInitial">U</div>
+          <div class="nm d-none d-sm-block">
+            <b id="userName">ผู้ใช้</b><br><span id="userRole">บทบาท</span>
+          </div>
+          <i class="fi fi-rr-angle-small-down text-muted"></i>
+        </div>
+        <ul class="dropdown-menu dropdown-menu-end shadow">
+          <li><button class="dropdown-item" id="btnChangePw"><i class="fi fi-rr-lock me-2"></i>เปลี่ยนรหัสผ่าน</button></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><button class="dropdown-item" id="btnLogout"><i class="fi fi-rr-sign-out-alt me-2"></i>ออกจากระบบ</button></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="layout">
+      <div class="backdrop" id="backdrop"></div>
+
+      <!-- sidebar -->
+      <aside class="sidebar" id="sidebar">
+        <div class="group-label">ภาพรวม</div>
+        <ul class="list-unstyled mb-0">
+          <li><a class="nav-link active" data-page="dashboard"><i class="fi fi-rr-apps"></i> แดชบอร์ด</a></li>
+          <li><a class="nav-link" data-page="approval"><i class="fi fi-rr-time-check"></i> คิวอนุมัติ <span class="badge text-bg-danger ms-auto d-none" id="approvalBadge">0</span></a></li>
+          <li><a class="nav-link" data-page="leave"><i class="fi fi-rr-calendar"></i> ใบลา</a></li>
+        </ul>
+        <div class="group-label">จัดการข้อมูล</div>
+        <ul class="list-unstyled mb-0">
+          <li><a class="nav-link" data-page="calendar"><i class="fi fi-rr-calendar-lines"></i> ปฏิทินการลา</a></li>
+          <li><a class="nav-link" data-page="employee"><i class="fi fi-rr-users"></i> พนักงาน</a></li>
+          <li><a class="nav-link" data-page="master"><i class="fi fi-rr-list-check"></i> ข้อมูลหลัก</a></li>
+          <li><a class="nav-link" data-page="report"><i class="fi fi-rr-chart-pie-alt"></i> รายงาน</a></li>
+        </ul>
+        <div class="group-label">ระบบ</div>
+        <ul class="list-unstyled mb-0">
+          <li><a class="nav-link" data-page="users"><i class="fi fi-rr-user-gear"></i> จัดการผู้ใช้</a></li>
+          <li><a class="nav-link" data-page="settings"><i class="fi fi-rr-settings"></i> ตั้งค่า</a></li>
+          <li><a class="nav-link" data-page="help"><i class="fi fi-rr-book-alt"></i> คู่มือ</a></li>
+        </ul>
+      </aside>
+
+      <!-- content -->
+      <main class="content">
+
+        <!-- DASHBOARD -->
+        <section id="page-dashboard" class="page-section">
+          <div class="d-flex align-items-end justify-content-between mb-4 flex-wrap gap-2">
+            <div>
+              <h2 class="page-title">สวัสดี, <span id="hiName">ผู้ใช้</span></h2>
+              <p class="page-sub">ภาพรวมการลางานวันนี้</p>
+            </div>
+          </div>
+
+          <div class="kpi-row mb-4">
+            <div class="kpi kpi--feature">
+              <div class="ico"><i class="fi fi-rr-hourglass-end"></i></div>
+              <div class="val" id="kpiPending">0</div>
+              <div class="lbl">รออนุมัติ</div>
+            </div>
+            <div class="kpi">
+              <div class="ico ico-warn"><i class="fi fi-rr-plane-departure"></i></div>
+              <div class="val" id="kpiToday">0</div>
+              <div class="lbl">ลาวันนี้</div>
+            </div>
+            <div class="kpi">
+              <div class="ico ico-ok"><i class="fi fi-rr-calendar-check"></i></div>
+              <div class="val" id="kpiMonth">0</div>
+              <div class="lbl">ลาเดือนนี้</div>
+            </div>
+            <div class="kpi">
+              <div class="ico ico-info"><i class="fi fi-rr-users-alt"></i></div>
+              <div class="val" id="kpiEmployees">0</div>
+              <div class="lbl">พนักงานทั้งหมด</div>
+            </div>
+          </div>
+
+          <div class="row g-3">
+            <div class="col-lg-5">
+              <div class="panel h-100">
+                <div class="panel-h">สัดส่วนการลาตามประเภท <small class="text-muted" id="dashYear"></small></div>
+                <div class="panel-b">
+                  <div id="donutWrap" style="position:relative;height:240px"><canvas id="chartDonut"></canvas></div>
+                  <div id="donutEmpty" class="text-center text-muted py-4 d-none">ยังไม่มีข้อมูลการลาที่อนุมัติ</div>
+                </div>
+              </div>
+            </div>
+            <div class="col-lg-7">
+              <div class="panel h-100">
+                <div class="panel-h">แนวโน้มการลารายเดือน (วัน)</div>
+                <div class="panel-b">
+                  <div style="position:relative;height:240px"><canvas id="chartMonthly"></canvas></div>
+                </div>
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="panel">
+                <div class="panel-h">ปฏิทินการลาสัปดาห์นี้</div>
+                <div class="panel-b p-0" id="weekCalWrap">
+                  <div class="d-flex" id="weekCal" style="overflow-x:auto;min-height:60px"></div>
+                </div>
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="panel">
+                <div class="panel-h d-flex justify-content-between align-items-center">
+                  <span>กำลังลาวันนี้</span><span class="badge text-bg-light border" id="todayCount">0</span>
+                </div>
+                <div class="panel-b p-0"><div class="table-responsive">
+                  <table class="table align-middle mb-0">
+                    <thead class="table-light"><tr><th>พนักงาน</th><th>ประเภท</th><th>ช่วงวันลา</th><th class="text-center">วัน</th></tr></thead>
+                    <tbody id="todayLeaveList"></tbody>
+                  </table>
+                </div></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- placeholders เฟสถัดไป -->
+        <section id="page-approval" class="page-section d-none">
+          <h2 class="page-title mb-1">คิวอนุมัติ</h2>
+          <p class="page-sub mb-3">รายการใบลาที่รอการอนุมัติของคุณ</p>
+          <div id="bulkBar" class="d-none mb-2 d-flex align-items-center gap-2 p-2 rounded-3" style="background:var(--brand-100);border:1px solid var(--brand)">
+            <span class="small fw-semibold text-brand" id="bulkCount">เลือก 0 รายการ</span>
+            <button class="btn btn-sm btn-accent ms-auto" id="btnBulkApprove"><i class="fi fi-rr-check me-1"></i>อนุมัติทั้งหมด</button>
+            <button class="btn btn-sm btn-outline-danger" id="btnBulkReject"><i class="fi fi-rr-cross me-1"></i>ไม่อนุมัติทั้งหมด</button>
+          </div>
+          <div class="panel"><div class="panel-b p-0"><div class="table-responsive">
+            <table class="table align-middle mb-0">
+              <thead class="table-light"><tr>
+                <th style="width:36px"><input type="checkbox" class="form-check-input" id="chkAll"></th>
+                <th>เลขที่</th><th>พนักงาน</th><th>ประเภท</th><th>ช่วงวันลา</th>
+                <th class="text-center">วัน</th><th class="text-center">รออนุมัติ</th><th class="text-end">ดำเนินการ</th>
+              </tr></thead>
+              <tbody id="tblApproval"></tbody>
+            </table>
+          </div></div></div>
+        </section>
+        <section id="page-leave" class="page-section d-none">
+          <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-3">
+            <div>
+              <h2 class="page-title mb-1">ใบลา</h2>
+              <p class="page-sub mb-0">สร้าง · ค้นหา · ติดตามสถานะใบลา</p>
+            </div>
+            <button class="btn btn-accent" id="btnAddLeave"><i class="fi fi-rr-add-document me-1"></i>สร้างใบลา</button>
+          </div>
+
+          <div class="panel mb-3"><div class="panel-b py-3"><div class="row g-2">
+            <div class="col-md-5"><div class="input-group">
+              <span class="input-group-text bg-white"><i class="fi fi-rr-search"></i></span>
+              <input class="form-control" id="lvSearch" placeholder="ค้นหาเลขที่ / ชื่อ / ประเภท">
+            </div></div>
+            <div class="col-md-4"><select class="form-select" id="lvFilterDept"><option value="">ทุกแผนก</option></select></div>
+            <div class="col-md-3"><select class="form-select" id="lvFilterStatus">
+              <option value="">ทุกสถานะ</option>
+              <option value="SUBMITTED">รออนุมัติ</option>
+              <option value="L1_APPROVED">ผ่านระดับ 1</option>
+              <option value="APPROVED">อนุมัติแล้ว</option>
+              <option value="REJECTED">ไม่อนุมัติ</option>
+              <option value="CANCELLED">ยกเลิก</option>
+            </select></div>
+          </div></div></div>
+
+          <div class="panel"><div class="panel-b p-0"><div class="table-responsive">
+            <table class="table align-middle mb-0">
+              <thead class="table-light"><tr>
+                <th>เลขที่</th><th>พนักงาน</th><th>ประเภท</th><th>ช่วงวันลา</th>
+                <th class="text-center">วัน</th><th class="text-center">สถานะ</th><th class="text-end"></th>
+              </tr></thead>
+              <tbody id="tblLeave"></tbody>
+            </table>
+          </div></div></div>
+        </section>
+        <section id="page-employee" class="page-section d-none">
+          <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-3">
+            <div>
+              <h2 class="page-title mb-1">พนักงาน</h2>
+              <p class="page-sub mb-0">ทะเบียนพนักงาน · ผูกบัญชี LINE · โควตาการลา</p>
+            </div>
+            <div class="d-flex gap-2">
+            <button class="btn btn-ghost" id="btnImportCSV"><i class="fi fi-rr-upload me-1"></i>Import CSV</button>
+            <input type="file" id="empCSVFile" accept=".csv" class="d-none">
+            <button class="btn btn-accent" id="btnAddEmp"><i class="fi fi-rr-user-add me-1"></i>เพิ่มพนักงาน</button>
+          </div>
+          </div>
+
+          <div class="panel mb-3">
+            <div class="panel-b py-3">
+              <div class="row g-2 align-items-center">
+                <div class="col-md-5">
+                  <div class="input-group">
+                    <span class="input-group-text bg-white"><i class="fi fi-rr-search"></i></span>
+                    <input class="form-control" id="empSearch" placeholder="ค้นหาชื่อ / รหัส / ตำแหน่ง">
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <select class="form-select" id="empFilterDept"><option value="">ทุกแผนก</option></select>
+                </div>
+                <div class="col-md-3">
+                  <select class="form-select" id="empFilterLine">
+                    <option value="">สถานะ LINE: ทั้งหมด</option>
+                    <option value="1">ผูกแล้ว</option>
+                    <option value="0">ยังไม่ผูก</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-b p-0">
+              <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                  <thead class="table-light"><tr>
+                    <th>พนักงาน</th><th>รหัส</th><th>แผนก</th><th>ตำแหน่ง</th>
+                    <th class="text-center">LINE</th><th class="text-center">สถานะ</th><th class="text-end">จัดการ</th>
+                  </tr></thead>
+                  <tbody id="tblEmp"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section id="page-master" class="page-section d-none">
+          <h2 class="page-title mb-1">ข้อมูลหลัก</h2>
+          <p class="page-sub mb-3">ประเภทการลา · แผนก · วันหยุด</p>
+
+          <ul class="nav nav-pills mb-3" id="masterTabs">
+            <li class="nav-item"><button class="nav-link active" data-mtab="leavetype">ประเภทการลา</button></li>
+            <li class="nav-item"><button class="nav-link" data-mtab="department">แผนก</button></li>
+            <li class="nav-item"><button class="nav-link" data-mtab="holiday">วันหยุด</button></li>
+          </ul>
+
+          <!-- ประเภทลา -->
+          <div class="master-pane" id="mpane-leavetype">
+            <div class="panel">
+              <div class="panel-h d-flex justify-content-between align-items-center">
+                <span>ประเภทการลา</span>
+                <button class="btn btn-accent btn-sm" id="btnAddLeaveType"><i class="fi fi-rr-plus me-1"></i>เพิ่มประเภท</button>
+              </div>
+              <div class="panel-b p-0">
+                <div class="table-responsive">
+                  <table class="table align-middle mb-0">
+                    <thead class="table-light"><tr>
+                      <th>ประเภท</th><th>รหัส</th><th class="text-center">โควตา/ปี (วัน)</th>
+                      <th class="text-center">แนบไฟล์</th><th class="text-center">ครึ่งวัน</th>
+                      <th class="text-center">สถานะ</th><th class="text-end">จัดการ</th>
+                    </tr></thead>
+                    <tbody id="tblLeaveType"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- แผนก -->
+          <div class="master-pane d-none" id="mpane-department">
+            <div class="panel">
+              <div class="panel-h d-flex justify-content-between align-items-center">
+                <span>แผนก</span>
+                <button class="btn btn-accent btn-sm" id="btnAddDept"><i class="fi fi-rr-plus me-1"></i>เพิ่มแผนก</button>
+              </div>
+              <div class="panel-b p-0">
+                <div class="table-responsive">
+                  <table class="table align-middle mb-0">
+                    <thead class="table-light"><tr>
+                      <th>ชื่อแผนก</th><th>รหัส</th><th>หัวหน้าแผนก</th>
+                      <th class="text-center">สถานะ</th><th class="text-end">จัดการ</th>
+                    </tr></thead>
+                    <tbody id="tblDept"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- วันหยุด -->
+          <div class="master-pane d-none" id="mpane-holiday">
+            <div class="panel">
+              <div class="panel-h d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <span>วันหยุดประจำปี</span>
+                <div class="d-flex gap-2 align-items-center">
+                  <select class="form-select form-select-sm" id="holidayYear" style="width:auto"></select>
+                  <button class="btn btn-ghost btn-sm" id="btnSeedHoliday"><i class="fi fi-rr-calendar-clock me-1"></i>เพิ่มวันหยุดราชการ</button>
+                  <button class="btn btn-accent btn-sm" id="btnAddHoliday"><i class="fi fi-rr-plus me-1"></i>เพิ่มวันหยุด</button>
+                </div>
+              </div>
+              <div class="panel-b p-0">
+                <div class="table-responsive">
+                  <table class="table align-middle mb-0">
+                    <thead class="table-light"><tr>
+                      <th>วันที่</th><th>ชื่อวันหยุด</th><th>ประเภท</th><th class="text-end">จัดการ</th>
+                    </tr></thead>
+                    <tbody id="tblHoliday"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section id="page-report" class="page-section d-none">
+          <h2 class="page-title mb-1">รายงาน</h2>
+          <p class="page-sub mb-3">สรุปการลา + ดาวน์โหลด Excel / พิมพ์ PDF</p>
+
+          <div class="panel mb-3"><div class="panel-b py-3"><div class="row g-2 align-items-end">
+            <div class="col-md-2"><label class="form-label">ปี</label><select class="form-select" id="rpYear"></select></div>
+            <div class="col-md-3"><label class="form-label">แผนก</label><select class="form-select" id="rpDept"><option value="">ทุกแผนก</option></select></div>
+            <div class="col-md-2"><label class="form-label">สถานะ</label><select class="form-select" id="rpStatus">
+              <option value="APPROVED">อนุมัติแล้ว</option><option value="ALL">ทั้งหมด</option>
+              <option value="SUBMITTED">รออนุมัติ</option><option value="REJECTED">ไม่อนุมัติ</option><option value="CANCELLED">ยกเลิก</option>
+            </select></div>
+            <div class="col-md-2"><label class="form-label">จัดกลุ่มตาม</label><select class="form-select" id="rpGroup">
+              <option value="employee">พนักงาน</option><option value="department">แผนก</option><option value="type">ประเภทลา</option>
+            </select></div>
+            <div class="col-md-3 d-flex gap-2">
+              <button class="btn btn-brand flex-fill" id="btnRunReport"><i class="fi fi-rr-search me-1"></i>ดูรายงาน</button>
+            </div>
+          </div></div></div>
+
+          <div id="reportResult" class="d-none">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+              <div class="d-flex gap-3">
+                <span class="badge text-bg-light border fs-6">รวม <b id="rpTotalCount">0</b> ใบ</span>
+                <span class="badge text-bg-light border fs-6">รวม <b id="rpTotalDays">0</b> วัน</span>
+              </div>
+              <div class="d-flex gap-2">
+                <button class="btn btn-ghost btn-sm" id="btnExportCsv"><i class="fi fi-rr-file-excel me-1"></i>Excel</button>
+                <button class="btn btn-ghost btn-sm" id="btnPrintReport"><i class="fi fi-rr-print me-1"></i>พิมพ์ PDF</button>
+              </div>
+            </div>
+
+            <div class="row g-3">
+              <div class="col-lg-5"><div class="panel">
+                <div class="panel-h" id="rpSummaryTitle">สรุป</div>
+                <div class="panel-b p-0"><div class="table-responsive">
+                  <table class="table align-middle mb-0">
+                    <thead class="table-light"><tr><th id="rpGroupCol">พนักงาน</th><th class="text-center">จำนวนใบ</th><th class="text-center">วันลา</th></tr></thead>
+                    <tbody id="rpSummary"></tbody>
+                  </table>
+                </div></div>
+              </div></div>
+              <div class="col-lg-7"><div class="panel">
+                <div class="panel-h">รายละเอียด</div>
+                <div class="panel-b p-0"><div class="table-responsive" style="max-height:520px;overflow:auto">
+                  <table class="table align-middle mb-0">
+                    <thead class="table-light"><tr><th>เลขที่</th><th>พนักงาน</th><th>ประเภท</th><th>ช่วงวัน</th><th class="text-center">วัน</th><th>สถานะ</th></tr></thead>
+                    <tbody id="rpDetail"></tbody>
+                  </table>
+                </div></div>
+              </div></div>
+            </div>
+          </div>
+        </section>
+        <section id="page-settings" class="page-section d-none">
+          <h2 class="page-title mb-1">ตั้งค่าระบบ</h2>
+          <p class="page-sub mb-3">LINE · โลโก้ · ระดับการอนุมัติ · วันทำงาน</p>
+
+          <div class="row g-3">
+            <!-- ทั่วไป + โลโก้ -->
+            <div class="col-lg-5">
+              <div class="panel mb-3">
+                <div class="panel-h">โลโก้และชื่อระบบ</div>
+                <div class="panel-b">
+                  <div class="text-center mb-3">
+                    <div class="logo-preview" id="logoPreview"><i class="fi fi-rr-picture"></i></div>
+                    <input type="file" id="logoFile" accept="image/*" class="d-none">
+                    <div class="mt-2">
+                      <button class="btn btn-ghost btn-sm" id="btnPickLogo"><i class="fi fi-rr-upload me-1"></i>เลือกรูปโลโก้</button>
+                    </div>
+                  </div>
+                  <label class="form-label">ชื่อระบบ</label>
+                  <input type="text" class="form-control" id="cfgAppName">
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-h">ไฟล์/Google Drive</div>
+                <div class="panel-b">
+                  <label class="form-label">Folder ID (สำหรับเก็บโลโก้/ไฟล์แนบ)</label>
+                  <div class="input-group">
+                    <input type="text" class="form-control" id="cfgFolderId" placeholder="เว้นว่างเพื่อให้ระบบสร้างให้">
+                    <button class="btn btn-ghost" id="btnCreateFolder">สร้างให้</button>
+                  </div>
+                  <small class="text-muted">วางเฉพาะ ID ของโฟลเดอร์ ไม่ต้องวางลิงก์เต็ม</small>
+                </div>
+              </div>
+            </div>
+
+            <!-- LINE + การอนุมัติ + วันทำงาน -->
+            <div class="col-lg-7">
+              <div class="panel mb-3">
+                <div class="panel-h">การเชื่อมต่อ LINE</div>
+                <div class="panel-b">
+                  <label class="form-label">Channel Access Token</label>
+                  <input type="text" class="form-control mb-2" id="cfgLineToken" placeholder="LINE Messaging API token">
+                  <label class="form-label">Channel Secret</label>
+                  <input type="text" class="form-control mb-2" id="cfgLineSecret">
+                  <label class="form-label">LIFF ID</label>
+                  <input type="text" class="form-control mb-2" id="cfgLiffId" placeholder="xxxxxxxxxx-xxxxxxxx">
+                  <label class="form-label">ทดสอบแจ้งเตือน (วาง LINE userId)</label>
+                  <div class="input-group">
+                    <input type="text" class="form-control" id="cfgTestLine" placeholder="Uxxxxxxxx...">
+                    <button class="btn btn-ghost" id="btnTestLine">ส่งทดสอบ</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel mb-3">
+                <div class="panel-h">การอนุมัติ</div>
+                <div class="panel-b">
+                  <div class="row g-2">
+                    <div class="col-md-4">
+                      <label class="form-label">จำนวนระดับ</label>
+                      <select class="form-select" id="cfgLevels">
+                        <option value="1">1 ระดับ</option>
+                        <option value="2">2 ระดับ</option>
+                      </select>
+                    </div>
+                    <div class="col-md-4">
+                      <label class="form-label">ผู้อนุมัติระดับ 1</label>
+                      <select class="form-select" id="cfgL1">
+                        <option value="supervisor">หัวหน้างาน</option>
+                        <option value="hr">HR</option>
+                      </select>
+                    </div>
+                    <div class="col-md-4" id="boxL2">
+                      <label class="form-label">ผู้อนุมัติระดับ 2</label>
+                      <select class="form-select" id="cfgL2">
+                        <option value="hr">HR</option>
+                        <option value="supervisor">หัวหน้างาน</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-h">วันทำงาน / ตัวเลือก</div>
+                <div class="panel-b">
+                  <label class="form-label">วันทำงาน (ใช้คำนวณวันลา)</label>
+                  <div class="d-flex flex-wrap gap-2 mb-3" id="workDays"></div>
+                  <div class="row g-2">
+                    <div class="col-md-6">
+                      <label class="form-label">เวลาทำงาน</label>
+                      <input type="text" class="form-control" id="cfgWorkHours" placeholder="08:00-17:00">
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end">
+                      <div class="form-check form-switch me-3">
+                        <input class="form-check-input" type="checkbox" id="cfgHalfDay">
+                        <label class="form-check-label" for="cfgHalfDay">อนุญาตลาครึ่งวัน</label>
+                      </div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="cfgBE">
+                        <label class="form-check-label" for="cfgBE">แสดงปี พ.ศ.</label>
+                      </div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="cfgNotify">
+                        <label class="form-check-label" for="cfgNotify">แจ้งเตือนผ่าน LINE</label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="text-end mt-3">
+            <button class="btn btn-ghost me-2" id="btnCarryForward"><i class="fi fi-rr-redo me-1"></i>ยกยอดวันลาปีที่แล้ว</button>
+            <button class="btn btn-ghost me-2" id="btnSetupRichMenu"><i class="fi fi-rr-menu-burger me-1"></i>ตั้งค่า Rich Menu</button>
+            <button class="btn btn-accent px-4" id="btnSaveConfig"><i class="fi fi-rr-disk me-1"></i>บันทึกการตั้งค่า</button>
+          </div>
+        </section>
+
+        <!-- CALENDAR -->
+        <section id="page-calendar" class="page-section d-none">
+          <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-3">
+            <div>
+              <h2 class="page-title mb-1">ปฏิทินการลา</h2>
+              <p class="page-sub mb-0">ภาพรวมการลาประจำเดือน</p>
+            </div>
+            <div class="d-flex gap-2 align-items-center">
+              <button class="btn btn-ghost btn-sm" id="calPrev"><i class="fi fi-rr-angle-left"></i></button>
+              <span class="fw-semibold" id="calTitle" style="min-width:140px;text-align:center"></span>
+              <button class="btn btn-ghost btn-sm" id="calNext"><i class="fi fi-rr-angle-right"></i></button>
+            </div>
+          </div>
+          <div class="panel"><div class="panel-b p-0" id="calGrid"></div></div>
+          <div class="panel mt-3 d-none" id="calLegend">
+            <div class="panel-b py-2" id="calLegendBody" style="display:flex;flex-wrap:wrap;gap:10px"></div>
+          </div>
+        </section>
+
+        <!-- USERS -->
+        <section id="page-users" class="page-section d-none">
+          <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-3">
+            <div>
+              <h2 class="page-title mb-1">จัดการผู้ใช้</h2>
+              <p class="page-sub mb-0">บัญชีผู้ใช้ระบบ Web (admin · hr · supervisor)</p>
+            </div>
+            <button class="btn btn-accent" id="btnAddUser"><i class="fi fi-rr-user-add me-1"></i>เพิ่มผู้ใช้</button>
+          </div>
+          <div class="panel">
+            <div class="panel-b p-0">
+              <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                  <thead class="table-light"><tr>
+                    <th>ชื่อ</th><th>ชื่อผู้ใช้</th><th>บทบาท</th><th>อีเมล</th>
+                    <th class="text-center">สถานะ</th><th class="text-end">จัดการ</th>
+                  </tr></thead>
+                  <tbody id="tblUsers"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- HELP / MANUAL -->
+        <section id="page-help" class="page-section d-none">
+          <h2 class="page-title mb-1">คู่มือการใช้งาน</h2>
+          <p class="page-sub mb-3">เลือกหัวข้อที่ต้องการ</p>
+
+          <!-- Tab pills -->
+          <ul class="nav nav-pills mb-3 flex-wrap gap-1" id="helpTabs">
+            <li class="nav-item"><button class="nav-link active" data-htab="setup">🚀 ตั้งค่าครั้งแรก</button></li>
+            <li class="nav-item"><button class="nav-link" data-htab="line">💬 LINE Approval</button></li>
+            <li class="nav-item"><button class="nav-link" data-htab="admin">🖥️ HR / Admin</button></li>
+            <li class="nav-item"><button class="nav-link" data-htab="approver">✅ ผู้อนุมัติ</button></li>
+            <li class="nav-item"><button class="nav-link" data-htab="employee">📱 พนักงาน</button></li>
+            <li class="nav-item"><button class="nav-link" data-htab="status">🔖 สถานะ</button></li>
+          </ul>
+
+          <!-- Tab content -->
+          <div class="panel">
+            <div class="panel-b" style="max-width:680px">
+
+              <!-- ตั้งค่าครั้งแรก -->
+              <div class="help-pane" id="htab-setup">
+                <div class="help-step"><span class="help-num">1</span><div>
+                  <b>ตั้งค่า LINE Official Account</b>
+                  <ul class="mt-1 mb-0 small text-muted">
+                    <li>เข้า <b>LINE Developers Console</b> → สร้าง Provider &amp; Channel (Messaging API)</li>
+                    <li>คัดลอก <b>Channel Access Token</b> และ <b>Channel Secret</b></li>
+                    <li>เปิด <b>Webhooks</b> → ใส่ URL ของ GAS Web App ที่ Deploy แล้ว</li>
+                    <li>ปิด Auto-reply และ Greeting message</li>
+                  </ul>
+                </div></div>
+                <div class="help-step"><span class="help-num">2</span><div>
+                  <b>ตั้งค่า LIFF App</b>
+                  <ul class="mt-1 mb-0 small text-muted">
+                    <li>LINE Developers Console → Channel → แท็บ <b>LIFF</b> → Add</li>
+                    <li>Size: <b>Full</b> · Endpoint URL: <code>https://naiyachonponthong.github.io/leave-liff/</code></li>
+                    <li>Scope: <b>profile</b> เท่านั้น</li>
+                    <li>คัดลอก <b>LIFF ID</b> แล้วนำไปใส่ใน ตั้งค่า → LIFF ID</li>
+                  </ul>
+                </div></div>
+                <div class="help-step"><span class="help-num">3</span><div>
+                  <b>ตั้งค่าระบบหลังบ้าน</b>
+                  <ul class="mt-1 mb-0 small text-muted">
+                    <li>ไปที่เมนู <b>ตั้งค่า</b> → ใส่ Token, Secret, LIFF ID</li>
+                    <li>เลือกระดับการอนุมัติ, วันทำงาน, เวลาทำงาน</li>
+                    <li>กด <b>บันทึกการตั้งค่า</b></li>
+                    <li>กด <b>ตั้งค่า Rich Menu</b> เพื่อสร้างเมนูด้านล่าง LINE</li>
+                  </ul>
+                </div></div>
+                <div class="help-step"><span class="help-num">4</span><div>
+                  <b>เพิ่มพนักงาน &amp; กำหนดบทบาท</b>
+                  <ul class="mt-1 mb-0 small text-muted">
+                    <li>ไปที่ <b>พนักงาน</b> → เพิ่มข้อมูลพนักงานแต่ละคน กำหนด Role</li>
+                    <li>พนักงานเปิด LINE → กด Rich Menu → กรอกรหัสพนักงาน + เบอร์โทร</li>
+                    <li>ระบบจะผูก LINE userId อัตโนมัติ</li>
+                  </ul>
+                </div></div>
+              </div>
+
+              <!-- LINE Approval -->
+              <div class="help-pane d-none" id="htab-line">
+                <div class="alert mb-3 py-2" style="background:#e7f9e7;border:1px solid #00c300;color:#1a6c1a;font-size:.88rem">
+                  <b>✅ พร้อมใช้งานแล้ว</b> — ระบบมีปุ่มอนุมัติ/ไม่อนุมัติใน LINE อยู่แล้ว ไม่ต้องตั้งค่าเพิ่ม
+                </div>
+                <div class="help-step"><span class="help-num">1</span><div>
+                  <b>พนักงานยื่นใบลา</b>
+                  <p class="small text-muted mb-0 mt-1">ผ่าน LINE LIFF → กด ยื่นใบลา</p>
+                </div></div>
+                <div class="help-step"><span class="help-num">2</span><div>
+                  <b>ผู้อนุมัติได้รับ LINE Flex Message</b>
+                  <p class="small text-muted mb-0 mt-1">มีปุ่ม <b style="color:#3b3f9e">อนุมัติ</b> และ <b style="color:#dc3545">ไม่อนุมัติ</b> กดได้เลยในแชท LINE</p>
+                </div></div>
+                <div class="help-step"><span class="help-num">3</span><div>
+                  <b>ระบบตอบกลับและแจ้งพนักงาน</b>
+                  <p class="small text-muted mb-0 mt-1">ผลอนุมัติส่งกลับใน LINE แชท และ push แจ้งพนักงานทันที</p>
+                </div></div>
+                <div class="alert alert-warning py-2 mt-3 mb-0 small">
+                  <b>ข้อกำหนด:</b> ผู้อนุมัติต้องเป็น Friend กับ LINE OA และต้องมี LINE userId บันทึกในระบบ (ผูกบัญชีก่อน)
+                </div>
+              </div>
+
+              <!-- HR Admin -->
+              <div class="help-pane d-none" id="htab-admin">
+                <div class="help-step"><span class="help-num">◆</span><div>
+                  <b>สร้างใบลาแทนพนักงาน</b>
+                  <p class="small text-muted mb-0 mt-1">เมนู <b>ใบลา</b> → <b>+ สร้างใบลา</b> → เลือกพนักงาน ระบบคำนวณวันและหักยอดอัตโนมัติ</p>
+                </div></div>
+                <div class="help-step"><span class="help-num">◆</span><div>
+                  <b>จัดการประเภทการลา</b>
+                  <p class="small text-muted mb-0 mt-1">เมนู <b>ข้อมูลหลัก</b> → แท็บ <b>ประเภทการลา</b> — กำหนดโควตา, สี, ต้องแนบเอกสาร, ลาครึ่งวัน, โควตาตามอายุงาน</p>
+                </div></div>
+                <div class="help-step"><span class="help-num">◆</span><div>
+                  <b>ยกยอดวันลาข้ามปี</b>
+                  <p class="small text-muted mb-0 mt-1">เมนู <b>ตั้งค่า</b> → กด <b>ยกยอดวันลาปีที่แล้ว</b> ทำต้นปีใหม่ ระบบนำวันคงเหลือไปบวกปีถัดไปอัตโนมัติ</p>
+                </div></div>
+                <div class="help-step"><span class="help-num">◆</span><div>
+                  <b>อนุมัติหลายรายการพร้อมกัน (Bulk)</b>
+                  <p class="small text-muted mb-0 mt-1">เมนู <b>คิวอนุมัติ</b> → ติ๊ก checkbox → กด <b>อนุมัติทั้งหมด</b> หรือ <b>ไม่อนุมัติทั้งหมด</b></p>
+                </div></div>
+              </div>
+
+              <!-- ผู้อนุมัติ -->
+              <div class="help-pane d-none" id="htab-approver">
+                <div class="help-step"><span class="help-num">◆</span><div>
+                  <b>อนุมัติผ่าน LINE (แนะนำ)</b>
+                  <ul class="mt-1 mb-0 small text-muted">
+                    <li>รับ Flex Message ใน LINE เมื่อมีใบลาใหม่</li>
+                    <li>กดปุ่ม <b style="color:#3b3f9e">อนุมัติ</b> หรือ <b style="color:#dc3545">ไม่อนุมัติ</b> ในแชทได้เลย</li>
+                    <li>ระบบตอบกลับผลทันที ไม่ต้องเปิดหน้าเว็บ</li>
+                  </ul>
+                </div></div>
+                <div class="help-step"><span class="help-num">◆</span><div>
+                  <b>อนุมัติผ่านหน้าเว็บ</b>
+                  <p class="small text-muted mb-0 mt-1">เมนู <b>คิวอนุมัติ</b> → กด <b>อนุมัติ</b> หรือ <b>ปฏิเสธ</b> → ใส่ความเห็น → ยืนยัน ระบบแจ้งพนักงานทาง LINE</p>
+                </div></div>
+              </div>
+
+              <!-- พนักงาน -->
+              <div class="help-pane d-none" id="htab-employee">
+                <div class="help-step"><span class="help-num">1</span><div>
+                  <b>เริ่มใช้งานครั้งแรก</b>
+                  <ul class="mt-1 mb-0 small text-muted">
+                    <li>เพิ่มเพื่อน LINE Official Account ของบริษัท</li>
+                    <li>กด Rich Menu ด้านล่างแชท → หน้า "เชื่อมต่อบัญชี"</li>
+                    <li>กรอก <b>รหัสพนักงาน</b> + <b>เบอร์โทรศัพท์</b> → กด เชื่อมต่อ</li>
+                  </ul>
+                </div></div>
+                <div class="help-step"><span class="help-num">2</span><div>
+                  <b>ยื่นใบลา</b>
+                  <p class="small text-muted mb-0 mt-1">แท็บ <b>ยื่นลา</b> → เลือกประเภท → เลือกวัน → เหตุผล → แนบเอกสาร → กด <b>ยื่นใบลา</b></p>
+                </div></div>
+                <div class="help-step"><span class="help-num">3</span><div>
+                  <b>ดูประวัติ / ยกเลิก</b>
+                  <p class="small text-muted mb-0 mt-1">แท็บ <b>ประวัติ</b> → กรองด้วย chip สถานะ → กดที่ card เพื่อดูรายละเอียด → ยกเลิกได้หากยังรออนุมัติ</p>
+                </div></div>
+                <div class="help-step"><span class="help-num">4</span><div>
+                  <b>วันคงเหลือ &amp; วันหยุด</b>
+                  <p class="small text-muted mb-0 mt-1">แท็บ <b>คงเหลือ</b> → ดูโควตาแต่ละประเภทพร้อม progress bar · แท็บ <b>วันหยุด</b> → รายการวันหยุดปีนี้</p>
+                </div></div>
+              </div>
+
+              <!-- สถานะ -->
+              <div class="help-pane d-none" id="htab-status">
+                <div class="d-flex flex-column gap-3">
+                  <div class="d-flex align-items-start gap-3"><span class="badge text-bg-warning mt-1" style="min-width:80px;text-align:center">รออนุมัติ</span><span class="small text-muted">ยื่นใบลาแล้ว รอผู้อนุมัติระดับ 1 ดำเนินการ</span></div>
+                  <div class="d-flex align-items-start gap-3"><span class="badge text-bg-info mt-1" style="min-width:80px;text-align:center">ผ่านระดับ 1</span><span class="small text-muted">ผ่านระดับ 1 แล้ว รอผู้อนุมัติระดับ 2 (กรณีตั้งค่า 2 ระดับ)</span></div>
+                  <div class="d-flex align-items-start gap-3"><span class="badge text-bg-success mt-1" style="min-width:80px;text-align:center">อนุมัติ</span><span class="small text-muted">ผ่านการอนุมัติทุกระดับแล้ว วันลาถูกหักยอดแล้ว</span></div>
+                  <div class="d-flex align-items-start gap-3"><span class="badge text-bg-danger mt-1" style="min-width:80px;text-align:center">ไม่อนุมัติ</span><span class="small text-muted">ถูกปฏิเสธ ระบบคืนยอดวันลากลับอัตโนมัติ</span></div>
+                  <div class="d-flex align-items-start gap-3"><span class="badge text-bg-secondary mt-1" style="min-width:80px;text-align:center">ยกเลิก</span><span class="small text-muted">พนักงานยกเลิกเอง ระบบคืนยอดวันลากลับอัตโนมัติ</span></div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- ============ MODALS ============ -->
+  <!-- ประเภทลา -->
+  <div class="modal fade" id="modalLeaveType" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title" id="ltTitle">เพิ่มประเภทการลา</h5>
+      <button class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <input type="hidden" id="ltId">
+      <div class="row g-2">
+        <div class="col-8"><label class="form-label">ชื่อประเภท</label><input class="form-control" id="ltName"></div>
+        <div class="col-4"><label class="form-label">รหัส</label><input class="form-control" id="ltCode" placeholder="SICK"></div>
+        <div class="col-6"><label class="form-label">โควตา/ปี (วัน)</label><input type="number" class="form-control" id="ltQuota" value="0"></div>
+        <div class="col-6"><label class="form-label">สี</label><input type="color" class="form-control form-control-color w-100" id="ltColor" value="#3b3f9e"></div>
+        <div class="col-12 mt-2">
+          <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="ltAttach"><label class="form-check-label" for="ltAttach">ต้องแนบเอกสาร</label></div>
+          <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="ltHalf" checked><label class="form-check-label" for="ltHalf">ลาครึ่งวันได้</label></div>
+          <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="ltActive" checked><label class="form-check-label" for="ltActive">เปิดใช้งาน</label></div>
+        </div>
+        <div class="col-12">
+          <label class="form-label">โควตาตามอายุงาน <small class="text-muted">(JSON: [{min_years:0,days:6},{min_years:3,days:10}])</small></label>
+          <input class="form-control font-monospace" id="ltSeniority" placeholder="[]">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-ghost" data-bs-dismiss="modal">ยกเลิก</button>
+      <button class="btn btn-accent" id="btnSaveLeaveType">บันทึก</button></div>
+  </div></div></div>
+
+  <!-- แผนก -->
+  <div class="modal fade" id="modalDept" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title" id="deptTitle">เพิ่มแผนก</h5>
+      <button class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <input type="hidden" id="deptId">
+      <div class="row g-2">
+        <div class="col-8"><label class="form-label">ชื่อแผนก</label><input class="form-control" id="deptName"></div>
+        <div class="col-4"><label class="form-label">รหัส</label><input class="form-control" id="deptCode"></div>
+        <div class="col-12 mt-2"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="deptActive" checked><label class="form-check-label" for="deptActive">เปิดใช้งาน</label></div></div>
+        <div class="col-12">
+          <label class="form-label">หัวหน้าแผนก (ผู้อนุมัติระดับ 1)</label>
+          <select class="form-select" id="deptHead" multiple style="min-height:80px"></select>
+          <div class="form-text">กด Ctrl (Mac: ⌘) เพื่อเลือกหลายคน</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-ghost" data-bs-dismiss="modal">ยกเลิก</button>
+      <button class="btn btn-accent" id="btnSaveDept">บันทึก</button></div>
+  </div></div></div>
+
+  <!-- วันหยุด -->
+  <div class="modal fade" id="modalHoliday" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title" id="holTitle">เพิ่มวันหยุด</h5>
+      <button class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <input type="hidden" id="holId">
+      <div class="row g-2">
+        <div class="col-6"><label class="form-label">วันที่</label><input type="date" class="form-control" id="holDate"></div>
+        <div class="col-6"><label class="form-label">ประเภท</label>
+          <select class="form-select" id="holType"><option value="public">วันหยุดราชการ</option><option value="company">วันหยุดบริษัท</option></select></div>
+        <div class="col-12"><label class="form-label">ชื่อวันหยุด</label><input class="form-control" id="holName"></div>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-ghost" data-bs-dismiss="modal">ยกเลิก</button>
+      <button class="btn btn-accent" id="btnSaveHoliday">บันทึก</button></div>
+  </div></div></div>
+
+  <!-- พนักงาน -->
+  <div class="modal fade" id="modalEmp" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title" id="empTitle">เพิ่มพนักงาน</h5>
+      <button class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <input type="hidden" id="empId">
+      <div class="row g-3">
+        <div class="col-md-3 text-center">
+          <div class="logo-preview" id="empPhotoPreview" style="width:110px;height:110px"><i class="fi fi-rr-user"></i></div>
+          <input type="file" id="empPhotoFile" accept="image/*" class="d-none">
+          <input type="hidden" id="empPhotoId">
+          <button type="button" class="btn btn-ghost btn-sm mt-2" id="btnPickPhoto"><i class="fi fi-rr-camera me-1"></i>รูป</button>
+        </div>
+        <div class="col-md-9">
+          <div class="row g-2">
+            <div class="col-4"><label class="form-label">คำนำหน้า</label>
+              <select class="form-select" id="empPrefix"><option>นาย</option><option>นาง</option><option>นางสาว</option></select></div>
+            <div class="col-4"><label class="form-label">ชื่อ</label><input class="form-control" id="empFirst"></div>
+            <div class="col-4"><label class="form-label">นามสกุล</label><input class="form-control" id="empLast"></div>
+            <div class="col-4"><label class="form-label">ชื่อเล่น</label><input class="form-control" id="empNick"></div>
+            <div class="col-4"><label class="form-label">รหัสพนักงาน</label><input class="form-control" id="empCode"></div>
+            <div class="col-4"><label class="form-label">ประเภทพนักงาน</label>
+              <select class="form-select" id="empType"><option>ประจำ</option><option>ชั่วคราว</option><option>รายวัน</option></select></div>
+          </div>
+        </div>
+        <div class="col-md-6"><label class="form-label">แผนก</label><select class="form-select" id="empDept"><option value="">- เลือก -</option></select></div>
+        <div class="col-md-6"><label class="form-label">ตำแหน่ง</label><input class="form-control" id="empPos"></div>
+        <div class="col-md-4"><label class="form-label">เบอร์โทร (ใช้ผูก LINE)</label><input class="form-control" id="empPhone"></div>
+        <div class="col-md-4"><label class="form-label">อีเมล</label><input class="form-control" id="empEmail"></div>
+        <div class="col-md-4"><label class="form-label">วันเริ่มงาน</label><input type="date" class="form-control" id="empStart"></div>
+        <div class="col-12">
+          <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="empActive" checked><label class="form-check-label" for="empActive">ทำงานอยู่</label></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-ghost" data-bs-dismiss="modal">ยกเลิก</button>
+      <button class="btn btn-accent" id="btnSaveEmp">บันทึก</button></div>
+  </div></div></div>
+
+  <!-- โควตาการลา -->
+  <div class="modal fade" id="modalBalance" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">โควตาการลา · <span id="balEmpName"></span></h5>
+      <button class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <input type="hidden" id="balEmpId">
+      <div class="table-responsive">
+        <table class="table align-middle mb-0">
+          <thead class="table-light"><tr><th>ประเภท</th><th class="text-center">สิทธิ์</th><th class="text-center">ยกมา</th><th class="text-center">ใช้ไป</th><th class="text-center">คงเหลือ</th></tr></thead>
+          <tbody id="tblBalance"></tbody>
+        </table>
+      </div>
+      <small class="text-muted">แก้ตัวเลขช่อง "สิทธิ์" หรือ "ยกมา" แล้วกดบันทึกเพื่อปรับโควตา</small>
+    </div>
+    <div class="modal-footer"><button class="btn btn-ghost" id="btnGenBal">สร้างโควตาปีนี้</button>
+      <button class="btn btn-accent" id="btnSaveBalance">บันทึกโควตา</button></div>
+  </div></div></div>
+
+  <!-- สร้างใบลา -->
+  <div class="modal fade" id="modalLeave" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">สร้างใบลา</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <div class="row g-3">
+        <div class="col-md-6"><label class="form-label">พนักงาน</label><select class="form-select" id="lvEmp"><option value="">- เลือก -</option></select></div>
+        <div class="col-md-6"><label class="form-label">ประเภทการลา</label>
+          <select class="form-select" id="lvType"><option value="">- เลือก -</option></select>
+          <small class="text-muted" id="lvRemain"></small>
+        </div>
+        <div class="col-md-4"><label class="form-label">รูปแบบ</label>
+          <select class="form-select" id="lvMode"><option value="full">เต็มวัน</option><option value="morning">ครึ่งวันเช้า</option><option value="afternoon">ครึ่งวันบ่าย</option></select></div>
+        <div class="col-md-4"><label class="form-label">วันที่เริ่ม</label><input type="date" class="form-control" id="lvStart"></div>
+        <div class="col-md-4"><label class="form-label">วันที่สิ้นสุด</label><input type="date" class="form-control" id="lvEnd"></div>
+        <div class="col-12">
+          <div class="alert alert-light border d-flex justify-content-between align-items-center mb-0 py-2">
+            <span>จำนวนวันลา</span><b class="fs-5" id="lvDays">-</b>
+          </div>
+        </div>
+        <div class="col-12"><label class="form-label">เหตุผลการลา</label><textarea class="form-control" id="lvReason" rows="2"></textarea></div>
+        <div class="col-md-6"><label class="form-label">ผู้ติดต่อ/เบอร์ระหว่างลา</label><input class="form-control" id="lvContact"></div>
+        <div class="col-md-6"><label class="form-label">เอกสารแนบ <span id="lvAttachReq" class="text-danger"></span></label>
+          <input type="file" class="form-control" id="lvAttach" accept="image/*,application/pdf">
+          <input type="hidden" id="lvAttachId"><small class="text-muted" id="lvAttachStatus"></small></div>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-ghost" data-bs-dismiss="modal">ยกเลิก</button>
+      <button class="btn btn-accent" id="btnSaveLeave">ยื่นใบลา</button></div>
+  </div></div></div>
+
+  <!-- เปลี่ยนรหัสผ่าน -->
+  <div class="modal fade" id="modalChangePw" tabindex="-1"><div class="modal-dialog modal-sm"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">เปลี่ยนรหัสผ่าน</h5>
+      <button class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <div class="mb-3">
+        <label class="form-label">รหัสผ่านปัจจุบัน</label>
+        <input type="password" class="form-control" id="pwCurrent" autocomplete="current-password">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">รหัสผ่านใหม่</label>
+        <input type="password" class="form-control" id="pwNew" autocomplete="new-password" placeholder="อย่างน้อย 6 ตัวอักษร">
+      </div>
+      <div class="mb-1">
+        <label class="form-label">ยืนยันรหัสผ่านใหม่</label>
+        <input type="password" class="form-control" id="pwConfirm" autocomplete="new-password">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-bs-dismiss="modal">ยกเลิก</button>
+      <button class="btn btn-accent" id="btnSaveChangePw">บันทึก</button>
+    </div>
+  </div></div></div>
+
+  <!-- Import CSV Preview -->
+  <div class="modal fade" id="modalCSVPreview" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">ตรวจสอบข้อมูล CSV</h5>
+      <button class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <div class="alert alert-info py-2 small mb-2" id="csvSummary"></div>
+      <div class="table-responsive" style="max-height:360px;overflow:auto">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light sticky-top" id="csvHead"></thead>
+          <tbody id="csvBody"></tbody>
+        </table>
+      </div>
+      <div class="mt-2 small text-muted">คอลัมน์ที่รองรับ: ชื่อ, นามสกุล, คำนำหน้า, ชื่อเล่น, รหัสพนักงาน, แผนก, ตำแหน่ง, ประเภท, เบอร์โทร, อีเมล, วันเริ่มงาน</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-bs-dismiss="modal">ยกเลิก</button>
+      <button class="btn btn-accent" id="btnConfirmCSV"><i class="fi fi-rr-upload me-1"></i>นำเข้าเลย</button>
+    </div>
+  </div></div></div>
+
+  <!-- จัดการผู้ใช้ -->
+  <div class="modal fade" id="modalUser" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title" id="userModalTitle">เพิ่มผู้ใช้</h5>
+      <button class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <input type="hidden" id="usrId">
+      <div class="row g-3">
+        <div class="col-12"><label class="form-label">ชื่อ-นามสกุล</label><input class="form-control" id="usrName" placeholder="ชื่อที่แสดงในระบบ"></div>
+        <div class="col-md-6"><label class="form-label">ชื่อผู้ใช้ (username)</label><input class="form-control" id="usrUsername" placeholder="ตัวพิมพ์เล็ก ไม่มีช่องว่าง" autocomplete="off"></div>
+        <div class="col-md-6"><label class="form-label">บทบาท</label>
+          <select class="form-select" id="usrRole">
+            <option value="admin">ผู้ดูแลระบบ (admin)</option>
+            <option value="hr">ฝ่ายบุคคล (hr)</option>
+            <option value="supervisor">หัวหน้างาน (supervisor)</option>
+          </select>
+        </div>
+        <div class="col-12"><label class="form-label">อีเมล <small class="text-muted">(ไม่บังคับ)</small></label><input type="email" class="form-control" id="usrEmail"></div>
+        <div class="col-md-6">
+          <label class="form-label" id="usrPwLabel">รหัสผ่าน</label>
+          <div class="input-group">
+            <input type="password" class="form-control" id="usrPassword" autocomplete="new-password" placeholder="••••••••">
+            <button class="btn btn-toggle" type="button" id="btnToggleUsrPw"><i class="fi fi-rr-eye"></i></button>
+          </div>
+          <small class="text-muted" id="usrPwHint">ปล่อยว่างเพื่อใช้รหัสผ่านเดิม</small>
+        </div>
+        <div class="col-md-6 d-flex align-items-end pb-1">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="usrActive" checked>
+            <label class="form-check-label" for="usrActive">เปิดใช้งาน</label>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-ghost" data-bs-dismiss="modal">ยกเลิก</button>
+      <button class="btn btn-accent" id="btnSaveUser">บันทึก</button></div>
+  </div></div></div>
+
+  <!-- รายละเอียดใบลา -->
+  <div class="modal fade" id="modalLeaveDetail" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">รายละเอียดใบลา</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body" id="leaveDetailBody"></div>
+    <div class="modal-footer" id="leaveDetailFoot"></div>
+  </div></div></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <?!= include('js_core'); ?>
+  <?!= include('js_dashboard'); ?>
+  <?!= include('js_master'); ?>
+  <?!= include('js_employee'); ?>
+  <?!= include('js_leave'); ?>
+  <?!= include('js_approval'); ?>
+  <?!= include('js_report'); ?>
+  <?!= include('js_settings'); ?>
+  <?!= include('js_users'); ?>
+  <?!= include('js_calendar'); ?>
+  <?!= include('js_profile'); ?>
+</body>
+</html>

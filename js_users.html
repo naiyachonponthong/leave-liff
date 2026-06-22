@@ -1,0 +1,124 @@
+<script>
+/* ============================================================
+   USERS — CRUD for system accounts (admin only)
+   ============================================================ */
+var USR = { list: [] };
+
+var ROLE_LABELS = { admin: 'ผู้ดูแลระบบ', hr: 'ฝ่ายบุคคล (HR)', supervisor: 'หัวหน้างาน' };
+var ROLE_COLORS = { admin: 'text-bg-danger', hr: 'text-bg-primary', supervisor: 'text-bg-warning' };
+
+$(document).ready(function(){
+  $('#btnAddUser').on('click', function(){ openUser(null); });
+  $('#btnSaveUser').on('click', saveUser);
+  $('#btnToggleUsrPw').on('click', function(){
+    var inp = $('#usrPassword');
+    var isText = inp.attr('type') === 'text';
+    inp.attr('type', isText ? 'password' : 'text');
+    $(this).find('i').attr('class', isText ? 'fi fi-rr-eye' : 'fi fi-rr-eye-crossed');
+  });
+});
+
+window.PAGE_HOOKS.users = loadUsers;
+
+function _findUser(id){ return USR.list.filter(function(x){ return x.id === id; })[0]; }
+
+function loadUsers(){
+  tblSkel('#tblUsers', 6);
+  api('getUsers', APP.token).then(function(r){
+    if(r.status !== 'success'){ toast('error', r.message); return; }
+    USR.list = r.data;
+    renderUsers();
+  });
+}
+
+function renderUsers(){
+  var html = '';
+  if(!USR.list.length){
+    html = '<tr><td colspan="6" class="text-center text-muted py-4">ไม่พบผู้ใช้\x3c/td>\x3c/tr>';
+  } else {
+    USR.list.forEach(function(u){
+      var isSelf = u.username === APP.user.username;
+      var roleBadge = '<span class="badge ' + (ROLE_COLORS[u.role] || 'text-bg-secondary') + '">' + _esc(ROLE_LABELS[u.role] || u.role) + '\x3c/span>';
+      var activeBadge = u.active !== false
+        ? '<span class="badge text-bg-success">ใช้งาน\x3c/span>'
+        : '<span class="badge text-bg-secondary">ปิดใช้\x3c/span>';
+      html += '<tr>'
+        + '<td><b>' + _esc(u.name || '-') + '\x3c/b>' + (isSelf ? ' <span class="badge text-bg-light border text-muted ms-1">คุณ\x3c/span>' : '') + '\x3c/td>'
+        + '<td><code>' + _esc(u.username) + '\x3c/code>\x3c/td>'
+        + '<td>' + roleBadge + '\x3c/td>'
+        + '<td class="text-muted">' + _esc(u.email || '-') + '\x3c/td>'
+        + '<td class="text-center">' + activeBadge + '\x3c/td>'
+        + '<td class="text-end">'
+        +   '<button class="btn btn-ghost btn-sm me-1 u-edit" data-id="' + _esc(u.id) + '"><i class="fi fi-rr-edit">\x3c/i>\x3c/button>'
+        +   (isSelf ? '' : '<button class="btn btn-ghost btn-sm text-danger u-del" data-id="' + _esc(u.id) + '" data-name="' + _esc(u.username) + '"><i class="fi fi-rr-trash">\x3c/i>\x3c/button>')
+        + '\x3c/td>'
+        + '\x3c/tr>';
+    });
+  }
+  $('#tblUsers').html(html);
+
+  $('.u-edit').off('click').on('click', function(){ openUser(_findUser($(this).data('id'))); });
+  $('.u-del').off('click').on('click', function(){ confirmDeleteUser($(this).data('id'), $(this).data('name')); });
+}
+
+function openUser(u){
+  var isEdit = !!u;
+  $('#userModalTitle').text(isEdit ? 'แก้ไขผู้ใช้' : 'เพิ่มผู้ใช้');
+  $('#usrId').val(isEdit ? u.id : '');
+  $('#usrName').val(isEdit ? (u.name || '') : '');
+  $('#usrUsername').val(isEdit ? (u.username || '') : '');
+  $('#usrRole').val(isEdit ? (u.role || 'hr') : 'hr');
+  $('#usrEmail').val(isEdit ? (u.email || '') : '');
+  $('#usrPassword').val('').attr('type', 'password');
+  $('#btnToggleUsrPw i').attr('class', 'fi fi-rr-eye');
+  $('#usrActive').prop('checked', isEdit ? u.active !== false : true);
+  $('#usrPwLabel').text(isEdit ? 'รหัสผ่านใหม่' : 'รหัสผ่าน');
+  $('#usrPwHint').toggle(isEdit);
+  new bootstrap.Modal('#modalUser').show();
+}
+
+function saveUser(){
+  var id = $('#usrId').val().trim();
+  var name = $('#usrName').val().trim();
+  var username = $('#usrUsername').val().trim().toLowerCase();
+  var role = $('#usrRole').val();
+  var email = $('#usrEmail').val().trim();
+  var password = $('#usrPassword').val();
+  var active = $('#usrActive').is(':checked');
+
+  if(!name){ toast('error','กรุณาระบุชื่อ'); return; }
+  if(!username){ toast('error','กรุณาระบุชื่อผู้ใช้'); return; }
+  if(!id && !password){ toast('error','กรุณาระบุรหัสผ่าน'); return; }
+
+  var payload = { id: id, name: name, username: username, role: role, email: email, active: active };
+  if(password) payload.password = password;
+
+  setBtnLoading('#btnSaveUser', true);
+  api('saveUser', APP.token, payload).then(function(r){
+    setBtnLoading('#btnSaveUser', false);
+    toast(r.status === 'success' ? 'success' : 'error', r.message);
+    if(r.status === 'success'){
+      bootstrap.Modal.getInstance(document.getElementById('modalUser')).hide();
+      loadUsers();
+    }
+  }).catch(function(){ setBtnLoading('#btnSaveUser', false); });
+}
+
+function confirmDeleteUser(id, username){
+  Swal.fire({
+    title: 'ลบผู้ใช้?',
+    html: 'ต้องการลบบัญชี <b>' + _esc(username) + '\x3c/b> ใช่หรือไม่?',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'ลบ',
+    cancelButtonText: 'ยกเลิก',
+    confirmButtonColor: '#dc3545'
+  }).then(function(res){
+    if(!res.isConfirmed) return;
+    api('deleteUser', APP.token, id).then(function(r){
+      toast(r.status === 'success' ? 'success' : 'error', r.message);
+      if(r.status === 'success') loadUsers();
+    });
+  });
+}
+</script>

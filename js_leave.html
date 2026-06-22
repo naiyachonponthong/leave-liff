@@ -1,0 +1,264 @@
+<script>
+/* ============================================================
+   LEAVE REQUESTS — create / list / detail / cancel
+   ============================================================ */
+var LEAVE = { list: [], types: [], balances: {} };
+
+var LV_STATUS = {
+  SUBMITTED:   { t:'รออนุมัติ',   c:'text-bg-warning' },
+  L1_APPROVED: { t:'ผ่านระดับ 1', c:'text-bg-info' },
+  APPROVED:    { t:'อนุมัติแล้ว', c:'text-bg-success' },
+  REJECTED:    { t:'ไม่อนุมัติ',  c:'text-bg-danger' },
+  CANCELLED:   { t:'ยกเลิก',      c:'text-bg-secondary' }
+};
+function lvStatusBadge(s){
+  var x = LV_STATUS[s] || { t:s, c:'text-bg-secondary' };
+  return '<span class="badge ' + x.c + '">' + x.t + '\x3c/span>';
+}
+function lvModeText(m){ return m === 'morning' ? 'ครึ่งเช้า' : (m === 'afternoon' ? 'ครึ่งบ่าย' : ''); }
+
+$(document).ready(function(){
+  $('#btnAddLeave').on('click', openLeave);
+  $('#lvSearch').on('input', renderLeave);
+  $('#lvFilterDept').on('change', renderLeave);
+  $('#lvFilterStatus').on('change', renderLeave);
+
+  $('#lvEmp').on('change', onEmpChange);
+  $('#modalLeave').on('shown.bs.modal', function(){
+    if($.fn.select2 && !$('#lvEmp').data('select2')){
+      $('#lvEmp').select2({ dropdownParent: $('#modalLeave'), placeholder:'- เลือกพนักงาน -', allowClear:true, width:'100%' });
+    }
+  });
+  $('#modalLeave').on('hidden.bs.modal', function(){
+    if($.fn.select2 && $('#lvEmp').data('select2')){ $('#lvEmp').select2('destroy'); }
+  });
+  $('#lvType').on('change', onTypeChange);
+  $('#lvMode, #lvStart, #lvEnd').on('change', recalcDays);
+  $('#lvAttach').on('change', handleAttach);
+  $('#btnSaveLeave').on('click', submitLeave);
+});
+
+window.PAGE_HOOKS.leave = function(){ loadLeaveDeptFilter(); loadLeave(); };
+
+function loadLeaveDeptFilter(){
+  api('getDepartments', APP.token).then(function(r){
+    var o = '<option value="">ทุกแผนก\x3c/option>';
+    (r.data || []).forEach(function(d){ o += '<option value="' + d.id + '">' + _esc(d.name) + '\x3c/option>'; });
+    $('#lvFilterDept').html(o);
+  });
+}
+
+function loadLeave(){
+  tblSkel('#tblLeave', 7);
+  api('getLeaveRequests', APP.token, {}).then(function(r){
+    if(r.status !== 'success') return;
+    LEAVE.list = r.data;
+    renderLeave();
+  });
+}
+
+function renderLeave(){
+  var q = ($('#lvSearch').val() || '').toLowerCase();
+  var fd = $('#lvFilterDept').val();
+  var fs = $('#lvFilterStatus').val();
+  var rows = LEAVE.list.filter(function(d){
+    if(fd && d.department_id !== fd) return false;
+    if(fs && d.status !== fs) return false;
+    if(q && (d.employee_name + ' ' + d.request_no + ' ' + d.leave_type_name).toLowerCase().indexOf(q) === -1) return false;
+    return true;
+  });
+  var html = '';
+  if(!rows.length){ html = '<tr><td colspan="7" class="text-center text-muted py-4">ไม่พบใบลา\x3c/td>\x3c/tr>'; }
+  rows.forEach(function(d){
+    var range = fmtDateBE(d.start_date) + (d.start_date !== d.end_date ? ' - ' + fmtDateBE(d.end_date) : '');
+    var half = lvModeText(d.start_half);
+    html += '<tr>'
+      + '<td><span class="badge badge-soft">' + _esc(d.request_no) + '\x3c/span>\x3c/td>'
+      + '<td>' + _esc(d.employee_name) + '<br><small class="text-muted">' + _esc(d.department_name || '') + '\x3c/small>\x3c/td>'
+      + '<td>' + _esc(d.leave_type_name) + '\x3c/td>'
+      + '<td>' + range + (half ? ' <small class="text-muted">(' + half + ')\x3c/small>' : '') + '\x3c/td>'
+      + '<td class="text-center">' + d.total_days + '\x3c/td>'
+      + '<td class="text-center">' + lvStatusBadge(d.status) + '\x3c/td>'
+      + '<td class="text-end"><button class="btn btn-sm btn-ghost b-view" data-id="' + d.id + '"><i class="fi fi-rr-eye">\x3c/i>\x3c/button>\x3c/td>'
+      + '\x3c/tr>';
+  });
+  $('#tblLeave').html(html);
+  $('.b-view').off('click').on('click', function(){ openDetail($(this).data('id')); });
+}
+
+/* ---------- CREATE ---------- */
+function openLeave(){
+  $('#lvEmp').val(''); $('#lvType').val(''); $('#lvMode').val('full');
+  $('#lvStart').val(''); $('#lvEnd').val(''); $('#lvReason').val(''); $('#lvContact').val('');
+  $('#lvDays').text('-'); $('#lvRemain').text(''); $('#lvAttachId').val(''); $('#lvAttach').val('');
+  $('#lvAttachStatus').text(''); $('#lvAttachReq').text('');
+  LEAVE.balances = {};
+
+  api('getEmployeesSimple', APP.token).then(function(r){
+    var o = '<option value="">- เลือก -\x3c/option>';
+    (r.data || []).forEach(function(e){ o += '<option value="' + e.id + '">' + _esc(e.name) + (e.emp_code ? ' (' + _esc(e.emp_code) + ')' : '') + '\x3c/option>'; });
+    $('#lvEmp').html(o);
+  });
+  api('getLeaveTypes', APP.token).then(function(r){
+    LEAVE.types = (r.data || []).filter(function(t){ return t.active; });
+    var o = '<option value="">- เลือก -\x3c/option>';
+    LEAVE.types.forEach(function(t){ o += '<option value="' + t.id + '">' + _esc(t.name) + '\x3c/option>'; });
+    $('#lvType').html(o);
+  });
+  new bootstrap.Modal('#modalLeave').show();
+}
+
+function onEmpChange(){
+  var empId = $('#lvEmp').val();
+  LEAVE.balances = {};
+  $('#lvRemain').text('');
+  if(!empId) return;
+  api('getLeaveBalances', APP.token, empId).then(function(r){
+    (r.data || []).forEach(function(b){ LEAVE.balances[b.leave_type_id] = b.remaining; });
+    onTypeChange();
+  });
+}
+
+function onTypeChange(){
+  var tid = $('#lvType').val();
+  var t = LEAVE.types.filter(function(x){ return x.id === tid; })[0];
+  if(t && t.requires_attachment){ $('#lvAttachReq').text('(ต้องแนบ)'); } else { $('#lvAttachReq').text(''); }
+  if(tid && LEAVE.balances[tid] !== undefined){
+    $('#lvRemain').text('คงเหลือ ' + LEAVE.balances[tid] + ' วัน');
+  } else if(t && Number(t.default_quota_days) === 0){
+    $('#lvRemain').text('ไม่จำกัดโควตา');
+  } else { $('#lvRemain').text(''); }
+}
+
+function recalcDays(){
+  var mode = $('#lvMode').val();
+  var start = $('#lvStart').val();
+  if(mode !== 'full'){ $('#lvEnd').val(start).prop('disabled', true); }
+  else { $('#lvEnd').prop('disabled', false); }
+  var end = $('#lvEnd').val();
+  if(!start || !end){ $('#lvDays').text('-'); return; }
+  var sh = mode !== 'full' ? mode : 'full';
+  api('previewLeaveDays', APP.token, start, end, sh, sh).then(function(r){
+    $('#lvDays').text(r.status === 'success' ? r.days : '-');
+  });
+}
+
+function handleAttach(ev){
+  var file = ev.target.files[0];
+  if(!file) return;
+  if(file.size > 5 * 1024 * 1024){ toast('error','ไฟล์ใหญ่เกิน 5MB'); return; }
+  var reader = new FileReader();
+  reader.onload = function(e){
+    var base64 = e.target.result.split(',')[1];
+    $('#lvAttachStatus').text('กำลังอัพโหลด...');
+    api('uploadAttachment', APP.token, base64, file.name, file.type).then(function(r){
+      if(r.status === 'success'){ $('#lvAttachId').val(r.file_id); $('#lvAttachStatus').text('แนบไฟล์แล้ว'); }
+      else { $('#lvAttachStatus').text('อัพโหลดไม่สำเร็จ'); }
+    });
+  };
+  reader.readAsDataURL(file);
+}
+
+function submitLeave(){
+  var mode = $('#lvMode').val();
+  var sh = mode !== 'full' ? mode : 'full';
+  var attachId = $('#lvAttachId').val();
+  var tid = $('#lvType').val();
+  var t = LEAVE.types.filter(function(x){ return x.id === tid; })[0];
+
+  if(!$('#lvEmp').val() || !tid || !$('#lvStart').val() || !$('#lvEnd').val()){
+    toast('error','กรอกข้อมูลให้ครบ'); return;
+  }
+  if(t && t.requires_attachment && !attachId){ toast('error','ประเภทนี้ต้องแนบเอกสาร'); return; }
+
+  var obj = {
+    employee_id: $('#lvEmp').val(),
+    leave_type_id: tid,
+    start_date: $('#lvStart').val(),
+    end_date: $('#lvEnd').val(),
+    start_half: sh, end_half: sh,
+    reason: $('#lvReason').val().trim(),
+    contact_during_leave: $('#lvContact').val().trim(),
+    attachment_file_ids: attachId ? [attachId] : []
+  };
+  var btn = $('#btnSaveLeave'); btn.prop('disabled', true);
+  api('createLeaveRequest', APP.token, obj).then(function(r){
+    btn.prop('disabled', false);
+    if(r.status === 'success'){
+      bootstrap.Modal.getInstance(document.getElementById('modalLeave')).hide();
+      Swal.fire({ icon:'success', title:r.message, confirmButtonColor:'#3b3f9e' });
+      loadLeave();
+    } else { toast('error', r.message); }
+  });
+}
+
+/* ---------- DETAIL ---------- */
+function openDetail(id){
+  api('getLeaveRequest', APP.token, id).then(function(r){
+    if(r.status !== 'success'){ toast('error', r.message); return; }
+    var d = r.data;
+    var range = fmtDateBE(d.start_date) + (d.start_date !== d.end_date ? ' ถึง ' + fmtDateBE(d.end_date) : '');
+    var half = lvModeText(d.start_half);
+
+    var rows = ''
+      + detailRow('เลขที่', d.request_no)
+      + detailRow('พนักงาน', d.employee_name + (d.employee_position ? ' · ' + d.employee_position : ''))
+      + detailRow('แผนก', d.department_name || '-')
+      + detailRow('ประเภท', d.leave_type_name)
+      + detailRow('ช่วงวันลา', range + (half ? ' (' + half + ')' : ''))
+      + detailRow('จำนวนวัน', d.total_days + ' วัน')
+      + detailRow('เหตุผล', d.reason || '-')
+      + detailRow('ติดต่อระหว่างลา', d.contact_during_leave || '-')
+      + detailRow('สถานะ', lvStatusBadge(d.status));
+
+    var att = '';
+    if(d.attachments && d.attachments.length){
+      att = '<div class="mt-2"><b>เอกสารแนบ:\x3c/b> ' + d.attachments.map(function(a){
+        return '<a href="' + a.url + '" target="_blank" class="badge text-bg-light border">เปิดไฟล์\x3c/a>';
+      }).join(' ') + '\x3c/div>';
+    }
+
+    var tl = '';
+    if(d.approvals && d.approvals.length){
+      tl = '<hr><b>ประวัติการดำเนินการ\x3c/b><ul class="mt-2 small">';
+      d.approvals.forEach(function(a){
+        var act = a.action === 'approve' ? 'อนุมัติ' : (a.action === 'reject' ? 'ไม่อนุมัติ' : 'ยกเลิก');
+        tl += '<li>ระดับ ' + a.level + ' · ' + act + ' โดย ' + _esc(a.approver_name || '-')
+            + (a.comment ? ' — ' + _esc(a.comment) : '') + '\x3c/li>';
+      });
+      tl += '\x3c/ul>';
+    }
+
+    $('#leaveDetailBody').html('<table class="table table-sm mb-0">' + rows + '\x3c/table>' + att + tl);
+
+    var foot = '<button class="btn btn-ghost" data-bs-dismiss="modal">ปิด\x3c/button>';
+    if(d.status === 'SUBMITTED' || d.status === 'L1_APPROVED'){
+      foot += '<button class="btn btn-outline-danger" id="btnCancelLeave" data-id="' + d.id + '">ยกเลิกใบลา\x3c/button>';
+    }
+    $('#leaveDetailFoot').html(foot);
+    $('#btnCancelLeave').off('click').on('click', function(){ cancelLeave($(this).data('id')); });
+
+    new bootstrap.Modal('#modalLeaveDetail').show();
+  });
+}
+
+function detailRow(k, v){
+  return '<tr><td class="text-muted" style="width:160px">' + k + '\x3c/td><td>' + v + '\x3c/td>\x3c/tr>';
+}
+
+function cancelLeave(id){
+  Swal.fire({ title:'ยกเลิกใบลานี้?', icon:'warning', showCancelButton:true,
+    confirmButtonText:'ยกเลิกใบลา', cancelButtonText:'ปิด', confirmButtonColor:'#dc3545' })
+  .then(function(res){
+    if(res.isConfirmed){
+      api('cancelLeaveRequest', APP.token, id, APP.user.name).then(function(r){
+        toast(r.status === 'success' ? 'success' : 'error', r.message);
+        if(r.status === 'success'){
+          bootstrap.Modal.getInstance(document.getElementById('modalLeaveDetail')).hide();
+          loadLeave();
+        }
+      });
+    }
+  });
+}
+</script>

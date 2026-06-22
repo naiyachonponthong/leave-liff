@@ -1,0 +1,294 @@
+<script>
+/* ============================================================
+   EMPLOYEES — CRUD, photo, LINE link, balances
+   ============================================================ */
+var EMP = { list: [], depts: [] };
+
+var CSV_ROWS = [];
+
+$(document).ready(function(){
+  $('#btnAddEmp').on('click', function(){ openEmp(null); });
+  $('#btnPickPhoto').on('click', function(){ $('#empPhotoFile').trigger('click'); });
+  $('#empPhotoFile').on('change', handleEmpPhoto);
+  $('#btnSaveEmp').on('click', saveEmp);
+  $('#empSearch').on('input', renderEmp);
+  $('#empFilterDept').on('change', renderEmp);
+  $('#empFilterLine').on('change', renderEmp);
+  $('#btnSaveBalance').on('click', saveBalances);
+  $('#btnGenBal').on('click', genBalance);
+  $('#btnImportCSV').on('click', function(){ $('#empCSVFile').trigger('click'); });
+  $('#empCSVFile').on('change', handleCSVFile);
+  $('#btnConfirmCSV').on('click', doImportCSV);
+});
+
+window.PAGE_HOOKS.employee = function(){ loadDeptsForEmp(); loadEmp(); };
+
+function loadDeptsForEmp(){
+  api('getDepartments', APP.token).then(function(r){
+    EMP.depts = r.data || [];
+    var opt = '<option value="">- เลือก -\x3c/option>';
+    var fopt = '<option value="">ทุกแผนก\x3c/option>';
+    EMP.depts.forEach(function(d){
+      opt += '<option value="' + d.id + '">' + _esc(d.name) + '\x3c/option>';
+      fopt += '<option value="' + d.id + '">' + _esc(d.name) + '\x3c/option>';
+    });
+    $('#empDept').html(opt);
+    $('#empFilterDept').html(fopt);
+  });
+}
+
+function loadEmp(){
+  tblSkel('#tblEmp', 6);
+  api('getEmployees', APP.token).then(function(r){
+    if(r.status !== 'success') return;
+    EMP.list = r.data;
+    renderEmp();
+  });
+}
+
+function renderEmp(){
+  var q = ($('#empSearch').val() || '').toLowerCase();
+  var fd = $('#empFilterDept').val();
+  var fl = $('#empFilterLine').val();
+  var rows = EMP.list.filter(function(e){
+    if(fd && e.department_id !== fd) return false;
+    if(fl === '1' && !e.line_linked) return false;
+    if(fl === '0' && e.line_linked) return false;
+    if(q){
+      var hay = (e.full_name + ' ' + e.emp_code + ' ' + (e.position || '') + ' ' + (e.nickname || '')).toLowerCase();
+      if(hay.indexOf(q) === -1) return false;
+    }
+    return true;
+  });
+
+  var html = '';
+  if(!rows.length){ html = '<tr><td colspan="7" class="text-center text-muted py-4">ไม่พบพนักงาน\x3c/td>\x3c/tr>'; }
+  rows.forEach(function(e){
+    var avatar = e.photo_url
+      ? '<img src="' + e.photo_url + '" class="emp-avatar">'
+      : '<span class="emp-avatar emp-avatar-ph">' + _esc((e.first_name || 'N').charAt(0)) + '\x3c/span>';
+    var line = e.line_linked
+      ? '<span class="badge text-bg-success"><i class="fi fi-rr-check">\x3c/i> ผูกแล้ว\x3c/span>'
+      : '<span class="badge badge-soft">ยังไม่ผูก\x3c/span>';
+    html += '<tr>'
+      + '<td><div class="d-flex align-items-center gap-2">' + avatar
+        + '<div><b>' + _esc(e.full_name) + '\x3c/b>' + (e.nickname ? '<br><small class="text-muted">' + _esc(e.nickname) + '\x3c/small>' : '') + '\x3c/div>\x3c/div>\x3c/td>'
+      + '<td><span class="badge badge-soft">' + _esc(e.emp_code || '-') + '\x3c/span>\x3c/td>'
+      + '<td>' + _esc(e.department_name || '-') + '\x3c/td>'
+      + '<td>' + _esc(e.position || '-') + '\x3c/td>'
+      + '<td class="text-center">' + line + '\x3c/td>'
+      + '<td class="text-center">' + (e.status === 'active' ? '<span class="badge text-bg-success">ทำงาน\x3c/span>' : '<span class="badge text-bg-secondary">พ้นสภาพ\x3c/span>') + '\x3c/td>'
+      + '<td class="text-end text-nowrap">'
+        + '<button class="btn btn-sm btn-ghost b-bal" data-id="' + e.id + '" title="โควตา"><i class="fi fi-rr-calendar-clock">\x3c/i>\x3c/button>'
+        + (e.line_linked ? '<button class="btn btn-sm btn-ghost text-warning b-unlink" data-id="' + e.id + '" title="ปลด LINE"><i class="fi fi-rr-link-slash">\x3c/i>\x3c/button>' : '')
+        + '<button class="btn btn-sm btn-ghost b-eedit" data-id="' + e.id + '"><i class="fi fi-rr-pencil">\x3c/i>\x3c/button>'
+        + '<button class="btn btn-sm btn-ghost text-danger b-edel" data-id="' + e.id + '"><i class="fi fi-rr-trash">\x3c/i>\x3c/button>'
+      + '\x3c/td>\x3c/tr>';
+  });
+  $('#tblEmp').html(html);
+
+  $('.b-eedit').off('click').on('click', function(){ openEmp(_find($(this).data('id'))); });
+  $('.b-edel').off('click').on('click', function(){ delEmp(_find($(this).data('id'))); });
+  $('.b-bal').off('click').on('click', function(){ openBalance(_find($(this).data('id'))); });
+  $('.b-unlink').off('click').on('click', function(){ unlinkEmp(_find($(this).data('id'))); });
+}
+
+function _find(id){ return EMP.list.filter(function(x){ return x.id === id; })[0]; }
+
+function openEmp(e){
+  $('#empId').val(e ? e.id : '');
+  $('#empTitle').text(e ? 'แก้ไขพนักงาน' : 'เพิ่มพนักงาน');
+  $('#empPrefix').val(e ? (e.prefix || 'นาย') : 'นาย');
+  $('#empFirst').val(e ? e.first_name : '');
+  $('#empLast').val(e ? e.last_name : '');
+  $('#empNick').val(e ? e.nickname : '');
+  $('#empCode').val(e ? e.emp_code : '');
+  $('#empType').val(e ? (e.employment_type || 'ประจำ') : 'ประจำ');
+  $('#empDept').val(e ? (e.department_id || '') : '');
+  $('#empPos').val(e ? e.position : '');
+  $('#empPhone').val(e ? e.phone : '');
+  $('#empEmail').val(e ? e.email : '');
+  $('#empStart').val(e ? e.start_date : '');
+  $('#empActive').prop('checked', e ? e.status === 'active' : true);
+  $('#empPhotoId').val(e ? (e.photo_file_id || '') : '');
+  if(e && e.photo_url){ $('#empPhotoPreview').html('<img src="' + e.photo_url + '">'); }
+  else { $('#empPhotoPreview').html('<i class="fi fi-rr-user">\x3c/i>'); }
+  new bootstrap.Modal('#modalEmp').show();
+}
+
+function handleEmpPhoto(ev){
+  var file = ev.target.files[0];
+  if(!file) return;
+  if(file.size > 2 * 1024 * 1024){ toast('error','ไฟล์ใหญ่เกิน 2MB'); return; }
+  var reader = new FileReader();
+  reader.onload = function(e){
+    var base64 = e.target.result.split(',')[1];
+    Swal.fire({ title:'กำลังอัพโหลดรูป...', didOpen:function(){ Swal.showLoading(); }, allowOutsideClick:false });
+    api('uploadEmployeePhoto', APP.token, base64, file.name, file.type).then(function(r){
+      Swal.close();
+      if(r.status === 'success'){
+        $('#empPhotoId').val(r.file_id);
+        $('#empPhotoPreview').html('<img src="' + r.url + '">');
+        toast('success','อัพโหลดรูปแล้ว');
+      } else { toast('error', r.message); }
+    });
+  };
+  reader.readAsDataURL(file);
+}
+
+function saveEmp(){
+  var obj = {
+    id: $('#empId').val() || undefined,
+    prefix: $('#empPrefix').val(),
+    first_name: $('#empFirst').val().trim(),
+    last_name: $('#empLast').val().trim(),
+    nickname: $('#empNick').val().trim(),
+    emp_code: $('#empCode').val().trim(),
+    employment_type: $('#empType').val(),
+    department_id: $('#empDept').val(),
+    position: $('#empPos').val().trim(),
+    phone: $('#empPhone').val().trim(),
+    email: $('#empEmail').val().trim(),
+    start_date: $('#empStart').val(),
+    photo_file_id: $('#empPhotoId').val(),
+    status: $('#empActive').is(':checked') ? 'active' : 'inactive'
+  };
+  if(!obj.first_name || !obj.last_name){ toast('error','กรุณากรอกชื่อ-นามสกุล'); return; }
+  var btn = $('#btnSaveEmp'); btn.prop('disabled', true);
+  api('saveEmployee', APP.token, obj).then(function(r){
+    btn.prop('disabled', false);
+    toast(r.status === 'success' ? 'success' : 'error', r.message);
+    if(r.status === 'success'){ bootstrap.Modal.getInstance(document.getElementById('modalEmp')).hide(); loadEmp(); }
+  });
+}
+
+function delEmp(e){
+  confirmDelete(e.full_name, function(){
+    api('deleteEmployee', APP.token, e.id).then(function(r){
+      toast(r.status === 'success' ? 'success' : 'error', r.message); loadEmp();
+    });
+  });
+}
+
+function unlinkEmp(e){
+  Swal.fire({ title:'ปลดการเชื่อมต่อ LINE?', text: e.full_name, icon:'warning',
+    showCancelButton:true, confirmButtonText:'ปลด', cancelButtonText:'ยกเลิก', confirmButtonColor:'#dc3545' })
+  .then(function(res){
+    if(res.isConfirmed){
+      api('unlinkLine', APP.token, e.id).then(function(r){
+        toast(r.status === 'success' ? 'success' : 'error', r.message); loadEmp();
+      });
+    }
+  });
+}
+
+/* ---------- BALANCES ---------- */
+function openBalance(e){
+  $('#balEmpId').val(e.id);
+  $('#balEmpName').text(e.full_name);
+  loadBalances(e.id);
+  new bootstrap.Modal('#modalBalance').show();
+}
+
+function loadBalances(empId){
+  api('getLeaveBalances', APP.token, empId).then(function(r){
+    var html = '';
+    if(!r.data.length){ html = '<tr><td colspan="5" class="text-center text-muted py-3">ยังไม่มีโควตา กด "สร้างโควตาปีนี้"\x3c/td>\x3c/tr>'; }
+    r.data.forEach(function(b){
+      html += '<tr data-type="' + b.leave_type_id + '">'
+        + '<td><span class="lt-color" style="background:' + b.color + '">\x3c/span>' + _esc(b.leave_type_name) + '\x3c/td>'
+        + '<td class="text-center" style="width:90px"><input type="number" class="form-control form-control-sm bal-ent" value="' + b.entitled + '">\x3c/td>'
+        + '<td class="text-center" style="width:90px"><input type="number" class="form-control form-control-sm bal-carry" value="' + b.carried_over + '">\x3c/td>'
+        + '<td class="text-center">' + b.used + '\x3c/td>'
+        + '<td class="text-center"><b>' + b.remaining + '\x3c/b>\x3c/td>'
+        + '\x3c/tr>';
+    });
+    $('#tblBalance').html(html);
+  });
+}
+
+function saveBalances(){
+  var empId = $('#balEmpId').val();
+  var year = new Date().getFullYear();
+  var tasks = [];
+  $('#tblBalance tr[data-type]').each(function(){
+    var tid = $(this).data('type');
+    var ent = $(this).find('.bal-ent').val();
+    var carry = $(this).find('.bal-carry').val();
+    tasks.push(api('updateBalance', APP.token, empId, tid, year, ent, carry));
+  });
+  if(!tasks.length){ toast('error','ไม่มีโควตาให้บันทึก'); return; }
+  Promise.all(tasks).then(function(){
+    toast('success','บันทึกโควตาแล้ว'); loadBalances(empId);
+  });
+}
+
+function genBalance(){
+  var empId = $('#balEmpId').val();
+  api('generateBalancesForEmployee', APP.token, empId, new Date().getFullYear()).then(function(r){
+    toast(r.status === 'success' ? 'success' : 'error', r.message); loadBalances(empId);
+  });
+}
+
+/* ---------- CSV IMPORT ---------- */
+function handleCSVFile(e){
+  var file = e.target.files[0];
+  if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(ev){
+    var lines = ev.target.result.split(/\r?\n/).filter(function(l){ return l.trim(); });
+    if(lines.length < 2){ toast('error','ไฟล์ CSV ต้องมีอย่างน้อย 2 แถว (header + data)'); return; }
+    var headers = parseCSVLine(lines[0]);
+    CSV_ROWS = [];
+    for(var i = 1; i < lines.length; i++){
+      var vals = parseCSVLine(lines[i]);
+      if(!vals.length) continue;
+      var row = {};
+      headers.forEach(function(h, idx){ row[h.trim()] = (vals[idx] || '').trim(); });
+      CSV_ROWS.push(row);
+    }
+    previewCSV(headers, CSV_ROWS);
+    e.target.value = '';
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function parseCSVLine(line){
+  var result = [], cur = '', inQ = false;
+  for(var i = 0; i < line.length; i++){
+    var ch = line[i];
+    if(ch === '"'){ inQ = !inQ; }
+    else if(ch === ',' && !inQ){ result.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  result.push(cur);
+  return result;
+}
+
+function previewCSV(headers, rows){
+  $('#csvSummary').text('พบข้อมูล ' + rows.length + ' แถว กด "นำเข้าเลย" เพื่อบันทึก');
+  var thHtml = '<tr>' + headers.map(function(h){ return '<th>' + _esc(h) + '\x3c/th>'; }).join('') + '\x3c/tr>';
+  $('#csvHead').html(thHtml);
+  var tbHtml = rows.slice(0, 50).map(function(row){
+    return '<tr>' + headers.map(function(h){ return '<td>' + _esc(row[h] || '') + '\x3c/td>'; }).join('') + '\x3c/tr>';
+  }).join('');
+  if(rows.length > 50) tbHtml += '<tr><td colspan="' + headers.length + '" class="text-center text-muted">... และอีก ' + (rows.length - 50) + ' แถว\x3c/td>\x3c/tr>';
+  $('#csvBody').html(tbHtml);
+  new bootstrap.Modal('#modalCSVPreview').show();
+}
+
+function doImportCSV(){
+  if(!CSV_ROWS.length){ toast('error','ไม่มีข้อมูล'); return; }
+  setBtnLoading('#btnConfirmCSV', true);
+  api('importEmployeesCSV', APP.token, CSV_ROWS).then(function(r){
+    setBtnLoading('#btnConfirmCSV', false);
+    toast(r.status === 'success' ? 'success' : 'error', r.message);
+    if(r.status === 'success'){
+      bootstrap.Modal.getInstance(document.getElementById('modalCSVPreview')).hide();
+      CSV_ROWS = [];
+      loadEmp();
+      if(r.errors && r.errors.length) Swal.fire({ title: 'มีข้อผิดพลาด', html: r.errors.map(function(e){ return _esc(e); }).join('<br>'), icon: 'warning' });
+    }
+  }).catch(function(){ setBtnLoading('#btnConfirmCSV', false); });
+}
+</script>

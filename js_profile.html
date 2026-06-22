@@ -1,0 +1,26 @@
+<script>
+/* ============================================================
+   PROFILE — change password (self)
+   ============================================================ */
+$(document).ready(function(){
+  $('#btnChangePw').on('click', function(){
+    $('#pwCurrent,#pwNew,#pwConfirm').val('');
+    new bootstrap.Modal('#modalChangePw').show();
+  });
+
+  $('#btnSaveChangePw').on('click', function(){
+    var cur  = $('#pwCurrent').val();
+    var nw   = $('#pwNew').val();
+    var conf = $('#pwConfirm').val();
+    if (!cur || !nw || !conf){ toast('error','กรุณากรอกข้อมูลให้ครบ'); return; }
+    if (nw.length < 6){ toast('error','รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร'); return; }
+    if (nw !== conf){ toast('error','รหัสผ่านใหม่ไม่ตรงกัน'); return; }
+    setBtnLoading('#btnSaveChangePw', true);
+    api('changePassword', APP.token, cur, nw).then(function(r){
+      setBtnLoading('#btnSaveChangePw', false);
+      toast(r.status === 'success' ? 'success' : 'error', r.message);
+      if (r.status === 'success') bootstrap.Modal.getInstance(document.getElementById('modalChangePw')).hide();
+    }).catch(function(){ setBtnLoading('#btnSaveChangePw', false); });
+  });
+});
+</script>

@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>ระบบลาออนไลน์</title>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/2.6.0/uicons-regular-rounded/css/uicons-regular-rounded.css">
+  <style>
+    :root{
+      --brand: oklch(0.46 0.12 264); --brand-700: oklch(0.37 0.11 264);
+      --accent: oklch(0.84 0.15 84); --accent-700: oklch(0.68 0.14 72);
+      --bg: oklch(0.97 0.012 265); --surface:#fff;
+      --ink: oklch(0.28 0.03 265); --muted: oklch(0.56 0.02 265); --line: oklch(0.91 0.012 265);
+    }
+    *{ font-family:'Prompt',sans-serif; -webkit-tap-highlight-color:transparent; }
+    body{ background:var(--bg); color:var(--ink); margin:0; padding-bottom:78px; }
+
+    /* ── Splash / initial loading ── */
+    .lf-splash{
+      position:fixed; inset:0; z-index:9999;
+      background:linear-gradient(150deg, var(--brand) 0%, var(--brand-700) 100%);
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      transition:opacity .45s ease, visibility .45s ease;
+    }
+    .lf-splash.fade-out{ opacity:0; visibility:hidden; pointer-events:none; }
+    .splash-logo{
+      width:76px; height:76px; border-radius:22px;
+      background:var(--accent); display:grid; place-items:center; overflow:hidden;
+      box-shadow:0 10px 36px rgba(0,0,0,.25);
+      animation:pop-in .55s cubic-bezier(.34,1.56,.64,1) both;
+    }
+    .splash-logo i{ color:var(--brand-700); font-size:34px; }
+    .splash-logo img{ width:100%; height:100%; object-fit:cover; }
+    .splash-title{ color:#fff; font-size:1.2rem; font-weight:600; margin:18px 0 4px; animation:fade-up .5s .15s both; }
+    .splash-sub{ color:rgba(255,255,255,.72); font-size:.82rem; margin:0 0 28px; animation:fade-up .5s .25s both; }
+    .dots{ display:flex; gap:7px; animation:fade-up .5s .35s both; }
+    .dots span{
+      width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,.65);
+      animation:dot-bounce .9s ease-in-out infinite;
+    }
+    .dots span:nth-child(2){ animation-delay:.18s; }
+    .dots span:nth-child(3){ animation-delay:.36s; }
+    @keyframes dot-bounce{ 0%,60%,100%{ transform:translateY(0); opacity:.5; } 30%{ transform:translateY(-9px); opacity:1; } }
+    @keyframes pop-in{ from{ transform:scale(.55); opacity:0; } to{ transform:scale(1); opacity:1; } }
+    @keyframes fade-up{ from{ transform:translateY(10px); opacity:0; } to{ transform:translateY(0); opacity:1; } }
+
+    /* ── Header ── */
+    .lf-header{ background:var(--brand); color:#fff; padding:18px 18px 16px; display:flex; align-items:center; gap:12px; }
+    .lf-logo{ width:42px; height:42px; border-radius:12px; background:var(--accent); display:grid; place-items:center; overflow:hidden; }
+    .lf-logo i{ color:var(--brand-700); font-size:20px; } .lf-logo img{ width:100%; height:100%; object-fit:cover; }
+    .lf-header h1{ font-size:1.05rem; margin:0; font-weight:600; }
+    .lf-header small{ opacity:.85; font-size:.78rem; }
+
+    /* ── Layout ── */
+    .lf-body{ padding:16px; }
+    .card-soft{ background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:16px; margin-bottom:12px; box-shadow:0 1px 3px rgba(30,41,90,.05); }
+    .form-control,.form-select{ border-radius:12px; padding:.6rem .8rem; }
+    .form-label{ font-size:.84rem; color:var(--muted); margin-bottom:.25rem; }
+    .day-pill{ background:oklch(0.96 0.02 264); border-radius:10px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; }
+    .seg{ display:flex; gap:6px; } .seg .form-check{ flex:1; }
+    .bal-item{ display:flex; align-items:center; justify-content:space-between; padding:11px 0; border-bottom:1px solid var(--line); }
+    .bal-item:last-child{ border-bottom:0; }
+    .bal-dot{ width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:8px; vertical-align:middle; }
+    .bal-num b{ font-size:1.15rem; } .bal-num span{ font-size:.78rem; color:var(--muted); }
+    .badge-st{ font-size:.72rem; padding:.3rem .6rem; border-radius:8px; }
+    .hist-card{ background:#fff; border:1px solid var(--line); border-radius:14px; padding:13px 14px; margin-bottom:10px; }
+    .hist-card .no{ font-size:.74rem; color:var(--muted); }
+
+    /* ── Tabbar ── */
+    .tabbar{ position:fixed; bottom:0; left:0; right:0; background:#fff; border-top:1px solid var(--line); display:flex; padding:6px 0 calc(6px + env(safe-area-inset-bottom)); }
+    .tabbar button{ flex:1; background:none; border:0; color:var(--muted); font-size:.72rem; padding:6px 0; display:flex; flex-direction:column; align-items:center; gap:3px; }
+    .tabbar button i{ font-size:19px; }
+    .tabbar button.on{ color:var(--brand); }
+
+    /* ── Button loading (CSS-only) ── */
+    .btn-accent{ background:var(--accent); border:0; color:var(--brand-700); font-weight:600; border-radius:12px; padding:.7rem; transition:background .15s; }
+    .btn-accent:active{ background:var(--accent-700); color:#fff; }
+    .btn-loading{ position:relative; color:transparent !important; pointer-events:none; opacity:.85; }
+    .btn-loading::after{
+      content:''; position:absolute;
+      width:18px; height:18px; top:50%; left:50%; margin:-9px 0 0 -9px;
+      border:2.5px solid var(--brand-700); border-top-color:transparent;
+      border-radius:50%; animation:spin .7s linear infinite;
+    }
+    @keyframes spin{ to{ transform:rotate(360deg); } }
+
+    /* ── Skeleton ── */
+    .skeleton{
+      background:linear-gradient(90deg, var(--line) 25%, oklch(0.95 0.01 265) 50%, var(--line) 75%);
+      background-size:300% 100%; border-radius:8px;
+      animation:shimmer 1.3s ease-in-out infinite;
+    }
+    @keyframes shimmer{ from{ background-position:100%; } to{ background-position:-100%; } }
+    .skel-card{ background:#fff; border:1px solid var(--line); border-radius:14px; padding:13px 14px; margin-bottom:10px; }
+    .skel-line{ height:11px; margin-bottom:8px; }
+    .skel-line:last-child{ margin-bottom:0; }
+    .skel-row{ height:42px; border-radius:8px; margin-bottom:8px; }
+
+    /* ── Upload progress ── */
+    .upload-wrap{ position:relative; }
+    .upload-status{ display:flex; align-items:center; gap:6px; font-size:.82rem; min-height:20px; margin-top:4px; }
+    .upload-status .spin-sm{
+      width:13px; height:13px; border:2px solid var(--brand); border-top-color:transparent;
+      border-radius:50%; animation:spin .7s linear infinite; flex-shrink:0;
+    }
+    .upload-bar{ height:3px; border-radius:3px; background:var(--line); margin-top:5px; overflow:hidden; display:none; }
+    .upload-bar-fill{ height:100%; background:var(--brand); border-radius:3px; animation:upload-pulse 1.4s ease-in-out infinite; }
+    @keyframes upload-pulse{ 0%,100%{ opacity:1; width:30%; margin-left:0; } 50%{ opacity:.8; width:60%; margin-left:40%; } }
+
+    .hidden{ display:none !important; }
+    .spinner-border{ color:var(--brand); }
+
+    /* ── Filter chips ── */
+    .filter-scroll{ display:flex; gap:6px; overflow-x:auto; padding:2px 0 10px; scrollbar-width:none; }
+    .filter-scroll::-webkit-scrollbar{ display:none; }
+    .chip{ white-space:nowrap; border:1px solid var(--line); background:var(--surface); border-radius:20px; padding:5px 14px; font-size:.78rem; color:var(--muted); cursor:pointer; transition:background .15s,border-color .15s; }
+    .chip.active{ background:var(--brand); border-color:var(--brand); color:#fff; }
+
+    /* ── Balance progress bar ── */
+    .bal-bar{ height:5px; border-radius:3px; background:var(--line); margin-top:5px; overflow:hidden; }
+    .bal-bar-fill{ height:100%; border-radius:3px; transition:width .5s ease; }
+    .bal-item{ padding:12px 0; border-bottom:1px solid var(--line); }
+    .bal-item:last-child{ border-bottom:0; }
+
+    /* ── Holiday cards ── */
+    .hol-card{ background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:8px; display:flex; align-items:center; gap:12px; }
+    .hol-card.past{ opacity:.45; }
+    .hol-date{ min-width:46px; text-align:center; background:var(--brand); color:#fff; border-radius:10px; padding:7px 4px; }
+    .hol-date .d{ font-size:1.25rem; font-weight:700; line-height:1.1; }
+    .hol-date .m{ font-size:.62rem; opacity:.9; }
+
+    /* ── Bottom sheet ── */
+    .sheet-wrap{ position:fixed; inset:0; z-index:1050; display:flex; flex-direction:column; justify-content:flex-end; pointer-events:none; }
+    .sheet-wrap.show{ pointer-events:auto; }
+    .sheet-backdrop{ position:absolute; inset:0; background:rgba(0,0,0,.45); opacity:0; transition:opacity .25s; }
+    .sheet-wrap.show .sheet-backdrop{ opacity:1; }
+    .sheet{ background:var(--surface); border-radius:22px 22px 0 0; padding:20px 16px calc(20px + env(safe-area-inset-bottom)); max-height:88vh; overflow-y:auto; transform:translateY(100%); transition:transform .3s cubic-bezier(.32,1,.46,1); position:relative; }
+    .sheet-wrap.show .sheet{ transform:translateY(0); }
+    .sheet-handle{ width:36px; height:4px; border-radius:2px; background:var(--line); margin:0 auto 16px; }
+    .det-row{ display:flex; gap:10px; margin-bottom:10px; align-items:flex-start; }
+    .det-row i{ font-size:.9rem; color:var(--muted); flex-shrink:0; width:18px; margin-top:3px; }
+    .det-lbl{ font-size:.72rem; color:var(--muted); line-height:1; margin-bottom:2px; }
+    .det-val{ font-size:.88rem; }
+  </style>
+</head>
+<body>
+
+  <!-- Splash / loading -->
+  <div class="lf-splash" id="lfLoading">
+    <div class="splash-logo"><img id="splashLogo" class="hidden"><i class="fi fi-rr-following" id="splashIcon"></i></div>
+    <div class="splash-title" id="splashTitle">ระบบลาออนไลน์</div>
+    <div class="splash-sub" id="splashSub">กำลังโหลด...</div>
+    <div class="dots"><span></span><span></span><span></span></div>
+  </div>
+
+  <div class="lf-header">
+    <div class="lf-logo"><img id="lfLogo" class="hidden"><i class="fi fi-rr-following" id="lfLogoIcon"></i></div>
+    <div><h1 id="lfTitle">ระบบลาออนไลน์</h1><small id="lfSub">กำลังโหลด...</small></div>
+  </div>
+
+  <!-- ผูกบัญชี -->
+  <div class="lf-body hidden" id="viewLink">
+    <div class="card-soft text-center">
+      <i class="fi fi-rr-link-alt" style="font-size:40px;color:var(--brand)"></i>
+      <h5 class="mt-2 mb-1">เชื่อมต่อบัญชี</h5>
+      <p class="text-muted small mb-3">กรอกรหัสพนักงานและเบอร์โทรเพื่อเริ่มใช้งาน</p>
+      <div class="text-start">
+        <label class="form-label">รหัสพนักงาน</label>
+        <input class="form-control mb-2" id="linkCode" placeholder="เช่น EMP001">
+        <label class="form-label">เบอร์โทรศัพท์</label>
+        <input class="form-control mb-3" id="linkPhone" placeholder="08xxxxxxxx" inputmode="tel">
+        <button class="btn btn-accent w-100" id="btnLink">เชื่อมต่อ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- แอปหลัก -->
+  <div class="hidden" id="viewApp">
+    <!-- ยื่นลา -->
+    <div class="lf-body tab-pane" id="tab-new">
+      <div class="card-soft">
+        <h6 class="mb-3">ยื่นใบลา</h6>
+        <label class="form-label">ประเภทการลา</label>
+        <select class="form-select mb-1" id="nlType"></select>
+        <small class="text-muted" id="nlRemain"></small>
+        <label class="form-label mt-2">รูปแบบ</label>
+        <select class="form-select mb-2" id="nlMode">
+          <option value="full">เต็มวัน</option><option value="morning">ครึ่งวันเช้า</option><option value="afternoon">ครึ่งวันบ่าย</option>
+        </select>
+        <div class="row g-2">
+          <div class="col-6"><label class="form-label">วันเริ่ม</label><input type="date" class="form-control" id="nlStart"></div>
+          <div class="col-6"><label class="form-label">วันสิ้นสุด</label><input type="date" class="form-control" id="nlEnd"></div>
+        </div>
+        <div class="day-pill my-2"><span class="small text-muted">จำนวนวันลา</span><b id="nlDays">-</b></div>
+        <label class="form-label">เหตุผล</label>
+        <textarea class="form-control mb-2" id="nlReason" rows="2"></textarea>
+        <label class="form-label">ผู้ติดต่อระหว่างลา</label>
+        <input class="form-control mb-2" id="nlContact">
+        <label class="form-label">เอกสารแนบ <span class="text-danger" id="nlAttachReq"></span></label>
+        <div class="upload-wrap">
+          <input type="file" class="form-control mb-1" id="nlAttach" accept="image/*,application/pdf">
+          <div class="upload-bar" id="uploadBar"><div class="upload-bar-fill"></div></div>
+          <div class="upload-status" id="nlAttachStatus"></div>
+        </div>
+        <input type="hidden" id="nlAttachId">
+        <button class="btn btn-accent w-100 mt-3" id="btnSubmitLeave">ยื่นใบลา</button>
+      </div>
+    </div>
+
+    <!-- ประวัติ -->
+    <div class="lf-body tab-pane hidden" id="tab-history">
+      <div class="filter-scroll" id="histFilter">
+        <span class="chip active" data-st="">ทั้งหมด</span>
+        <span class="chip" data-st="SUBMITTED">รออนุมัติ</span>
+        <span class="chip" data-st="L1_APPROVED">ผ่านระดับ 1</span>
+        <span class="chip" data-st="APPROVED">อนุมัติ</span>
+        <span class="chip" data-st="REJECTED">ไม่อนุมัติ</span>
+        <span class="chip" data-st="CANCELLED">ยกเลิก</span>
+      </div>
+      <div id="histList"></div>
+    </div>
+
+    <!-- วันคงเหลือ -->
+    <div class="lf-body tab-pane hidden" id="tab-balance">
+      <h6 class="mb-2">วันลาคงเหลือ <small class="text-muted" id="balYear"></small></h6>
+      <div class="card-soft" id="balList"></div>
+    </div>
+
+    <!-- สถิติรายบุคคล -->
+    <div class="lf-body tab-pane hidden" id="tab-stats">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="mb-0">สถิติการลา</h6>
+        <select class="form-select form-select-sm" id="statsYear" style="width:auto"></select>
+      </div>
+      <div id="statsList"></div>
+    </div>
+
+    <!-- วันหยุด -->
+    <div class="lf-body tab-pane hidden" id="tab-holiday">
+      <h6 class="mb-2">วันหยุด ปี <span id="holYear"></span></h6>
+      <div id="holList"></div>
+    </div>
+  </div>
+
+  <div class="tabbar hidden" id="tabbar">
+    <button class="on" data-tab="new"><i class="fi fi-rr-add-document"></i>ยื่นลา</button>
+    <button data-tab="history"><i class="fi fi-rr-time-past"></i>ประวัติ</button>
+    <button data-tab="balance"><i class="fi fi-rr-calendar-check"></i>คงเหลือ</button>
+    <button data-tab="stats"><i class="fi fi-rr-chart-pie-alt"></i>สถิติ</button>
+    <button data-tab="holiday"><i class="fi fi-rr-calendar"></i>วันหยุด</button>
+  </div>
+
+  <!-- Detail bottom sheet -->
+  <div class="sheet-wrap" id="detailSheet">
+    <div class="sheet-backdrop" id="sheetBackdrop"></div>
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <div id="sheetBody"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script>
+  var LF = { userId: null, types: [], balances: {}, be: true, histStatus: '' };
+  var LF_HIST = [];
+
+  var GAS_URL = 'https://script.google.com/macros/s/AKfycbx8jFUDpyvrUMeA7TqLPMjziDUoiN3qAqxP-LJNdoyRbEHonk9RNRLbL9r-movi9Qpi7w/exec';
+
+  function api(fn){
+    var args = Array.prototype.slice.call(arguments, 1);
+    return fetch(GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify({ fn: fn, args: args })
+    }).then(function(r){ return r.json(); }).then(function(j){
+      if(j && j.ok) return j.data;
+      throw new Error(j && j.error ? j.error : 'API error');
+    });
+  }
+
+  /* ── Loading helpers ── */
+  function splashHide(){
+    $('#lfLoading').addClass('fade-out');
+    // ลบออกจาก DOM หลัง transition เสร็จ
+    setTimeout(function(){ $('#lfLoading').addClass('hidden'); }, 480);
+  }
+  function setBtnLoading(sel, on){
+    if(on) $(sel).addClass('btn-loading').prop('disabled', true);
+    else   $(sel).removeClass('btn-loading').prop('disabled', false);
+  }
+  function skelCards(n){
+    var h = '';
+    for(var i=0;i<n;i++){
+      h += '<div class="skel-card">'
+         + '<div style="display:flex;justify-content:space-between">'
+         + '<div class="skeleton skel-line" style="width:55%"></div>'
+         + '<div class="skeleton skel-line" style="width:22%"></div>\x3c/div>'
+         + '<div class="skeleton skel-line" style="width:38%"></div>'
+         + '<div class="skeleton skel-line" style="width:70%;margin-bottom:0"></div>'
+         + '\x3c/div>';
+    }
+    return h;
+  }
+  function skelRows(n){
+    var h = '';
+    for(var i=0;i<n;i++){
+      h += '<div class="skeleton skel-row"></div>';
+    }
+    return h;
+  }
+
+  /* ── Utils ── */
+  function fmtBE(iso){
+    if(!iso) return '-';
+    var p = iso.split('-');
+    var m = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+    return Number(p[2]) + ' ' + m[Number(p[1])-1] + ' ' + (Number(p[0]) + (LF.be ? 543 : 0));
+  }
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/\x3c/g,'&lt;').replace(/>/g,'&gt;'); }
+  function toast(icon, t){ Swal.fire({ toast:true, position:'top', icon:icon, title:t, showConfirmButton:false, timer:2400 }); }
+  var ST = { SUBMITTED:['รออนุมัติ','#f59e0b'], L1_APPROVED:['ผ่านระดับ 1','#0ea5e9'], APPROVED:['อนุมัติ','#10b981'], REJECTED:['ไม่อนุมัติ','#ef4444'], CANCELLED:['ยกเลิก','#94a3b8'] };
+
+  $(document).ready(function(){
+    initLiff();
+    $('#btnLink').on('click', doLink);
+    $('#btnSubmitLeave').on('click', submitLeave);
+    $('#nlType').on('change', onTypeChange);
+    $('#nlMode, #nlStart, #nlEnd').on('change', recalc);
+    $('#nlAttach').on('change', uploadAttach);
+    $('.tabbar button').on('click', function(){
+      var t = $(this).data('tab');
+      $('.tabbar button').removeClass('on'); $(this).addClass('on');
+      $('.tab-pane').addClass('hidden'); $('#tab-' + t).removeClass('hidden');
+      if(t === 'history') loadHistory();
+      if(t === 'balance') loadBalances();
+      if(t === 'stats') loadStats();
+      if(t === 'holiday') loadHolidays();
+    });
+
+    $('#histFilter').on('click', '.chip', function(){
+      $('#histFilter .chip').removeClass('active');
+      $(this).addClass('active');
+      LF.histStatus = $(this).data('st');
+      renderHistFiltered();
+    });
+
+    $('#sheetBackdrop').on('click', closeSheet);
+  });
+
+  function initLiff(){
+    api('liffGetConfig').then(function(c){
+      LF.be = c.buddhist_era;
+      $('#lfTitle, #splashTitle').text(c.app_name);
+      if(c.logo_url){
+        $('#lfLogo').attr('src', c.logo_url).removeClass('hidden'); $('#lfLogoIcon').addClass('hidden');
+        $('#splashLogo').attr('src', c.logo_url).removeClass('hidden'); $('#splashIcon').addClass('hidden');
+      }
+      if(!c.liff_id){
+        splashHide();
+        $('#lfSub').text('ยังไม่ได้ตั้งค่า LIFF');
+        Swal.fire({ icon:'warning', title:'ยังไม่ได้ตั้งค่า LIFF ID', text:'กรุณาตั้งค่าในระบบหลังบ้าน' });
+        return;
+      }
+      liff.init({ liffId: c.liff_id }).then(function(){
+        if(!liff.isLoggedIn()){ liff.login(); return; }
+        return liff.getProfile();
+      }).then(function(profile){
+        if(!profile) return;
+        LF.userId = profile.userId;
+        $('#lfSub').text(profile.displayName || '');
+        $('#splashSub').text(profile.displayName || '');
+        checkLink();
+      }).catch(function(err){
+        splashHide();
+        $('#lfSub').text('เปิดผ่าน LINE เท่านั้น');
+        Swal.fire({ icon:'error', title:'เริ่มต้น LIFF ไม่สำเร็จ', text:String(err) });
+      });
+    }).catch(function(err){
+      splashHide();
+      $('#lfSub').text('โหลดการตั้งค่าไม่สำเร็จ');
+      Swal.fire({ icon:'error', title:'โหลดการตั้งค่าไม่สำเร็จ', text:String(err) });
+    });
+  }
+
+  function checkLink(){
+    api('getEmployeeByLineId', LF.userId).then(function(r){
+      splashHide();
+      if(r.status === 'success' && r.linked){
+        $('#lfSub').text(r.employee.name);
+        showApp();
+      } else {
+        $('#viewLink').removeClass('hidden');
+      }
+    }).catch(function(err){
+      splashHide();
+      $('#viewLink').removeClass('hidden');
+      toast('error', 'เชื่อมต่อระบบไม่สำเร็จ: ' + String(err));
+    });
+  }
+
+  function doLink(){
+    var code = $('#linkCode').val().trim();
+    var phone = $('#linkPhone').val().trim();
+    if(!code || !phone){ toast('error','กรอกข้อมูลให้ครบ'); return; }
+    setBtnLoading('#btnLink', true);
+    api('linkLineAccount', code, phone, LF.userId).then(function(r){
+      setBtnLoading('#btnLink', false);
+      if(r.status === 'success'){
+        $('#viewLink').addClass('hidden');
+        $('#lfSub').text(r.employee.name);
+        Swal.fire({ icon:'success', title:'เชื่อมต่อสำเร็จ', timer:1500, showConfirmButton:false });
+        showApp();
+      } else { toast('error', r.message); }
+    }).catch(function(){ setBtnLoading('#btnLink', false); toast('error','เชื่อมต่อไม่สำเร็จ'); });
+  }
+
+  function showApp(){
+    $('#viewApp').removeClass('hidden');
+    $('#tabbar').removeClass('hidden');
+    api('liffGetLeaveTypes').then(function(r){
+      LF.types = r.data || [];
+      var o = '';
+      LF.types.forEach(function(t){ o += '<option value="' + t.id + '">' + esc(t.name) + '\x3c/option>'; });
+      $('#nlType').html(o);
+      loadBalanceMap(onTypeChange);
+    });
+  }
+
+  function loadBalanceMap(cb){
+    api('liffGetBalances', LF.userId).then(function(r){
+      LF.balances = {};
+      (r.data || []).forEach(function(b){ LF.balances[b.name] = b.remaining; });
+      if(cb) cb();
+    });
+  }
+
+  function onTypeChange(){
+    var t = LF.types.filter(function(x){ return x.id === $('#nlType').val(); })[0];
+    if(!t) return;
+    $('#nlAttachReq').text(t.requires_attachment ? '(ต้องแนบ)' : '');
+    if(LF.balances[t.name] !== undefined){ $('#nlRemain').text('คงเหลือ ' + LF.balances[t.name] + ' วัน'); }
+    else if(Number(t.default_quota_days) === 0){ $('#nlRemain').text('ไม่จำกัดโควตา'); }
+    else { $('#nlRemain').text(''); }
+  }
+
+  function recalc(){
+    var mode = $('#nlMode').val(); var start = $('#nlStart').val();
+    if(mode !== 'full'){ $('#nlEnd').val(start).prop('disabled', true); } else { $('#nlEnd').prop('disabled', false); }
+    var end = $('#nlEnd').val();
+    if(!start || !end){ $('#nlDays').text('-'); return; }
+    var sh = mode !== 'full' ? mode : 'full';
+    $('#nlDays').html('<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--brand-700);border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle"></span>');
+    api('liffPreviewDays', start, end, sh, sh).then(function(r){ $('#nlDays').text(r.days); });
+  }
+
+  function uploadAttach(ev){
+    var file = ev.target.files[0]; if(!file) return;
+    if(file.size > 5*1024*1024){ toast('error','ไฟล์ใหญ่เกิน 5MB'); return; }
+    var reader = new FileReader();
+    reader.onload = function(e){
+      $('#nlAttachStatus').html('<span class="spin-sm"></span><span>กำลังอัพโหลด...</span>');
+      $('#uploadBar').show();
+      api('liffUploadAttachment', LF.userId, e.target.result.split(',')[1], file.name, file.type).then(function(r){
+        $('#uploadBar').hide();
+        if(r.status === 'success'){
+          $('#nlAttachId').val(r.file_id);
+          $('#nlAttachStatus').html('<i class="fi fi-rr-check-circle" style="color:#10b981"></i><span>แนบไฟล์แล้ว</span>');
+        } else {
+          $('#nlAttachStatus').html('<i class="fi fi-rr-cross-circle" style="color:#ef4444"></i><span>อัพโหลดไม่สำเร็จ</span>');
+        }
+      }).catch(function(){
+        $('#uploadBar').hide();
+        $('#nlAttachStatus').html('<i class="fi fi-rr-cross-circle" style="color:#ef4444"></i><span>อัพโหลดไม่สำเร็จ</span>');
+      });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function submitLeave(){
+    var mode = $('#nlMode').val(); var sh = mode !== 'full' ? mode : 'full';
+    var tid = $('#nlType').val();
+    if(!tid || !$('#nlStart').val() || !$('#nlEnd').val()){ toast('error','กรอกข้อมูลให้ครบ'); return; }
+    var obj = {
+      leave_type_id: tid, start_date: $('#nlStart').val(), end_date: $('#nlEnd').val(),
+      start_half: sh, end_half: sh, reason: $('#nlReason').val().trim(),
+      contact_during_leave: $('#nlContact').val().trim(),
+      attachment_file_ids: $('#nlAttachId').val() ? [$('#nlAttachId').val()] : []
+    };
+    setBtnLoading('#btnSubmitLeave', true);
+    api('liffSubmitLeave', LF.userId, obj).then(function(r){
+      setBtnLoading('#btnSubmitLeave', false);
+      if(r.status === 'success'){
+        Swal.fire({ icon:'success', title:'ยื่นใบลาแล้ว', text:r.request_no, timer:1800, showConfirmButton:false });
+        $('#nlReason').val(''); $('#nlContact').val(''); $('#nlAttachId').val(''); $('#nlAttach').val('');
+        $('#nlAttachStatus').html(''); $('#uploadBar').hide(); $('#nlDays').text('-');
+        loadBalanceMap(onTypeChange);
+      } else { toast('error', r.message); }
+    }).catch(function(){ setBtnLoading('#btnSubmitLeave', false); toast('error','ส่งใบลาไม่สำเร็จ'); });
+  }
+
+  function loadHistory(){
+    $('#histList').html(skelCards(3));
+    api('liffGetHistory', LF.userId).then(function(r){
+      LF_HIST = r.data || [];
+      renderHistFiltered();
+    }).catch(function(){ $('#histList').html('<div class="text-center text-muted py-4">โหลดข้อมูลไม่สำเร็จ\x3c/div>'); });
+  }
+
+  function renderHistFiltered(){
+    var list = LF.histStatus ? LF_HIST.filter(function(d){ return d.status === LF.histStatus; }) : LF_HIST;
+    if(!list.length){ $('#histList').html('<div class="text-center text-muted py-4">ไม่มีรายการ\x3c/div>'); return; }
+    var html = '';
+    list.forEach(function(d){
+      var st = ST[d.status] || [d.status,'#94a3b8'];
+      var range = fmtBE(d.start_date) + (d.start_date !== d.end_date ? ' - ' + fmtBE(d.end_date) : '');
+      html += '<div class="hist-card" style="cursor:pointer" onclick="showDetail(\'' + d.id + '\')">'
+        + '<div class="d-flex justify-content-between align-items-start">'
+        + '<div><b>' + esc(d.leave_type_name) + '\x3c/b><div class="no">' + esc(d.request_no) + '\x3c/div>\x3c/div>'
+        + '<span class="badge-st" style="background:' + st[1] + '22;color:' + st[1] + '">' + st[0] + '\x3c/span>\x3c/div>'
+        + '<div class="small mt-1">' + range + ' · ' + d.total_days + ' วัน\x3c/div>'
+        + (d.last_comment ? '<div class="small text-muted mt-1">หมายเหตุ: ' + esc(d.last_comment) + '\x3c/div>' : '')
+        + (d.status === 'SUBMITTED' || d.status === 'L1_APPROVED'
+          ? '<button class="btn btn-sm w-100 mt-2" style="border:1px solid #ef4444;color:#ef4444;border-radius:10px;font-size:.78rem" onclick="event.stopPropagation();cancelLeave(\'' + d.id + '\')">ยกเลิกใบลา\x3c/button>'
+          : '')
+        + '\x3c/div>';
+    });
+    $('#histList').html(html);
+  }
+
+  function cancelLeave(leaveId){
+    Swal.fire({
+      title:'ยกเลิกใบลา?', icon:'warning',
+      html:'<textarea id="swCancelReason" class="swal2-textarea" placeholder="เหตุผลการยกเลิก (ไม่บังคับ)" style="height:80px;font-family:Prompt,sans-serif"></textarea>',
+      showCancelButton:true, confirmButtonText:'ยืนยันยกเลิก', cancelButtonText:'ไม่ยกเลิก',
+      confirmButtonColor:'#ef4444'
+    }).then(function(res){
+      if(!res.isConfirmed) return;
+      var reason = (document.getElementById('swCancelReason') || {}).value || '';
+      Swal.fire({ title:'กำลังยกเลิก...', didOpen:function(){ Swal.showLoading(); }, allowOutsideClick:false });
+      api('liffCancelLeave', LF.userId, leaveId, reason).then(function(r){
+        Swal.close();
+        if(r.status === 'success'){
+          toast('success', r.message);
+          loadHistory();
+          loadBalanceMap(onTypeChange);
+        } else { toast('error', r.message); }
+      }).catch(function(){ Swal.close(); toast('error','ยกเลิกไม่สำเร็จ'); });
+    });
+  }
+
+  function loadBalances(){
+    $('#balList').html(skelRows(4));
+    api('liffGetBalances', LF.userId).then(function(r){
+      $('#balYear').text('ปี ' + (r.year + (LF.be ? 543 : 0)));
+      if(!r.data || !r.data.length){ $('#balList').html('<div class="text-center text-muted py-3">ยังไม่มีข้อมูลโควตา\x3c/div>'); return; }
+      var html = '';
+      r.data.forEach(function(b){
+        var pct = b.entitled > 0 ? Math.min(100, Math.round((b.entitled - b.remaining) / b.entitled * 100)) : 0;
+        var unlimited = Number(b.entitled) === 0;
+        html += '<div class="bal-item">'
+          + '<div class="d-flex justify-content-between align-items-center">'
+          + '<div><span class="bal-dot" style="background:' + b.color + ';width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:middle">\x3c/span>'
+          + '<span style="font-size:.9rem">' + esc(b.name) + '\x3c/span>\x3c/div>'
+          + '<div class="text-end"><b style="font-size:1.1rem">' + b.remaining + '\x3c/b>'
+          + ' <span style="font-size:.76rem;color:var(--muted)">/ ' + (unlimited ? '∞' : b.entitled) + ' วัน\x3c/span>\x3c/div>\x3c/div>'
+          + (!unlimited ? '<div class="bal-bar mt-1"><div class="bal-bar-fill" style="width:' + pct + '%;background:' + b.color + '">\x3c/div>\x3c/div>' : '')
+          + '\x3c/div>';
+      });
+      $('#balList').html(html);
+    }).catch(function(){ $('#balList').html('<div class="text-center text-muted py-3">โหลดข้อมูลไม่สำเร็จ\x3c/div>'); });
+  }
+  /* ── Detail bottom sheet ── */
+  function showDetail(id){
+    var cached = LF_HIST.filter(function(d){ return d.id === id; })[0];
+    $('#sheetBody').html(
+      cached ? buildDetailHtml(cached, true) :
+      '<div class="text-center py-5"><div class="spinner-border" style="width:28px;height:28px;border-width:3px"></div>\x3c/div>'
+    );
+    $('#detailSheet').addClass('show');
+    api('liffGetLeaveDetail', LF.userId, id).then(function(r){
+      if(r.status !== 'success'){ $('#sheetBody').html('<div class="text-center text-muted py-4">' + esc(r.message||'ไม่พบข้อมูล') + '\x3c/div>'); return; }
+      $('#sheetBody').html(buildDetailHtml(r.data, false));
+    }).catch(function(){ if(!cached) $('#sheetBody').html('<div class="text-center text-muted py-4">โหลดข้อมูลไม่สำเร็จ\x3c/div>'); });
+  }
+
+  function buildDetailHtml(d, slim){
+    var st = ST[d.status] || [d.status,'#94a3b8'];
+    var range = fmtBE(d.start_date) + (d.start_date !== d.end_date ? ' - ' + fmtBE(d.end_date) : '');
+    var modeLabel = d.start_half === 'morning' ? 'ครึ่งวันเช้า' : (d.start_half === 'afternoon' ? 'ครึ่งวันบ่าย' : 'เต็มวัน');
+    var h = '<div class="d-flex justify-content-between align-items-center mb-2">'
+      + '<b style="font-size:1rem">' + esc(d.leave_type_name) + '\x3c/b>'
+      + '<span class="badge-st" style="background:' + st[1] + '22;color:' + st[1] + '">' + st[0] + '\x3c/span>\x3c/div>'
+      + '<div class="small text-muted mb-3" style="font-size:.76rem">เลขที่ ' + esc(d.request_no||'') + '\x3c/div>'
+      + detRow('fi-rr-calendar', 'ช่วงวันลา', range + ' (' + d.total_days + ' วัน)')
+      + detRow('fi-rr-clock', 'รูปแบบ', modeLabel);
+    if(!slim){
+      if(d.reason) h += detRow('fi-rr-memo', 'เหตุผล', d.reason);
+      if(d.contact_during_leave) h += detRow('fi-rr-phone-call', 'ผู้ติดต่อ', d.contact_during_leave);
+      if(d.approved_by_name) h += detRow('fi-rr-user', 'อนุมัติโดย', d.approved_by_name);
+      if(d.last_comment) h += detRow('fi-rr-comment', 'ความเห็น', d.last_comment);
+      if(d.created_at) h += detRow('fi-rr-time-add', 'ยื่นเมื่อ', fmtBE(d.created_at.substring(0,10)));
+      if(d.attachment_url){
+        h += '<a href="' + d.attachment_url + '" target="_blank" class="d-flex align-items-center gap-2 mt-2 mb-1" '
+          + 'style="border:1px solid var(--brand);color:var(--brand);border-radius:10px;padding:8px 14px;font-size:.85rem;text-decoration:none">'
+          + '<i class="fi fi-rr-clip">\x3c/i>ดูเอกสารแนบ\x3c/a>';
+      }
+    }
+    if(d.status === 'SUBMITTED' || d.status === 'L1_APPROVED'){
+      h += '<button class="btn btn-sm w-100 mt-3" style="border:1px solid #ef4444;color:#ef4444;border-radius:10px" '
+        + 'onclick="closeSheet();setTimeout(function(){cancelLeave(\'' + d.id + '\')},220)">ยกเลิกใบลา\x3c/button>';
+    }
+    return h;
+  }
+
+  function detRow(icon, label, value){
+    return '<div class="det-row"><i class="fi ' + icon + '">\x3c/i><div><div class="det-lbl">' + label + '\x3c/div><div class="det-val">' + esc(String(value||'')) + '\x3c/div>\x3c/div>\x3c/div>';
+  }
+
+  function closeSheet(){
+    $('#detailSheet').removeClass('show');
+  }
+
+  /* ── Stats tab ── */
+  (function initStatsYear(){
+    var nowY = new Date().getFullYear();
+    var opt = '';
+    for(var y = nowY; y >= nowY - 3; y--) opt += '<option value="' + y + '">' + (y + (LF.be ? 543 : 0)) + '\x3c/option>';
+    $('#statsYear').html(opt);
+    $('#statsYear').on('change', loadStats);
+  })();
+
+  function loadStats(){
+    var year = $('#statsYear').val() || new Date().getFullYear();
+    $('#statsList').html('<div class="text-center py-4"><div class="spinner-border spinner-border-sm" style="color:var(--brand)">\x3c/div>\x3c/div>');
+    api('liffGetMyStats', LF.userId, year).then(function(r){
+      if(r.status !== 'success' || !r.data.length){
+        $('#statsList').html('<div class="text-center text-muted py-4">ยังไม่มีข้อมูลการลาในปีนี้\x3c/div>'); return;
+      }
+      var totalDays = r.data.reduce(function(a, d){ return a + d.days; }, 0);
+      var html = '<div class="card-soft mb-3" style="background:linear-gradient(135deg,var(--brand),var(--brand-700));color:#fff">'
+        + '<div style="font-size:.82rem;opacity:.85">ลาทั้งหมดในปี ' + (Number(year) + (LF.be?543:0)) + '\x3c/div>'
+        + '<div style="font-size:2rem;font-weight:700;line-height:1.2">' + totalDays + '\x3c/div>'
+        + '<div style="font-size:.82rem;opacity:.85">วัน\x3c/div>\x3c/div>';
+      r.data.forEach(function(d){
+        var pct = totalDays > 0 ? Math.round(d.days / totalDays * 100) : 0;
+        html += '<div class="card-soft">'
+          + '<div class="d-flex justify-content-between align-items-center mb-2">'
+          + '<span style="font-size:.9rem;font-weight:500"><span class="bal-dot" style="background:' + esc(d.color) + '"></span>' + esc(d.name) + '\x3c/span>'
+          + '<span style="font-size:.9rem;font-weight:600">' + d.days + ' วัน\x3c/span>\x3c/div>'
+          + '<div style="background:#f1f5f9;border-radius:99px;height:8px;overflow:hidden">'
+          + '<div style="height:100%;width:' + pct + '%;background:' + esc(d.color) + ';border-radius:99px;transition:width .5s">\x3c/div>\x3c/div>'
+          + '<div style="font-size:.74rem;color:var(--muted);margin-top:4px">' + d.count + ' ครั้ง · ' + pct + '%\x3c/div>\x3c/div>';
+      });
+      $('#statsList').html(html);
+    }).catch(function(){ $('#statsList').html('<div class="text-center text-muted py-3">โหลดข้อมูลไม่สำเร็จ\x3c/div>'); });
+  }
+
+  /* ── Holidays tab ── */
+  function loadHolidays(){
+    var year = new Date().getFullYear();
+    $('#holYear').text(year + (LF.be ? 543 : 0));
+    $('#holList').html(skelCards(4));
+    api('liffGetHolidays', year).then(function(r){
+      var list = r.data || [];
+      if(!list.length){ $('#holList').html('<div class="text-center text-muted py-4">ไม่มีข้อมูลวันหยุด\x3c/div>'); return; }
+      var TH_M = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+      var today = new Date().toISOString().substring(0,10);
+      var html = '';
+      list.forEach(function(h){
+        var p = h.date.split('-');
+        var isPast = h.date < today;
+        var isToday = h.date === today;
+        html += '<div class="hol-card' + (isPast?' past':'') + '">'
+          + '<div class="hol-date" style="' + (isToday?'background:#ef4444':'') + '">'
+          + '<div class="d">' + Number(p[2]) + '\x3c/div>'
+          + '<div class="m">' + TH_M[Number(p[1])-1] + '\x3c/div>\x3c/div>'
+          + '<div style="flex:1">'
+          + '<div style="font-size:.9rem;font-weight:500">' + esc(h.name) + '\x3c/div>'
+          + '<div class="small" style="color:var(--muted);font-size:.74rem">'
+          + (h.type==='company'?'วันหยุดบริษัท':'วันหยุดราชการ')
+          + (isToday?' · <b style="color:#ef4444">วันนี้\x3c/b>':'')
+          + '\x3c/div>\x3c/div>\x3c/div>';
+      });
+      $('#holList').html(html);
+    }).catch(function(){ $('#holList').html('<div class="text-center text-muted py-3">โหลดข้อมูลไม่สำเร็จ\x3c/div>'); });
+  }
+  </script>
+</body>
+</html>

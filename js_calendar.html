@@ -1,0 +1,102 @@
+<script>
+/* ============================================================
+   CALENDAR — monthly leave calendar
+   ============================================================ */
+var CAL = { year: new Date().getFullYear(), month: new Date().getMonth() + 1, data: null };
+
+$(document).ready(function(){
+  $('#calPrev').on('click', function(){ CAL.month--; if(CAL.month < 1){ CAL.month=12; CAL.year--; } loadCalendar(); });
+  $('#calNext').on('click', function(){ CAL.month++; if(CAL.month > 12){ CAL.month=1; CAL.year++; } loadCalendar(); });
+});
+
+window.PAGE_HOOKS.calendar = loadCalendar;
+
+var TH_MONTHS = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+var TH_DAYS   = ['อา','จ','อ','พ','พฤ','ศ','ส'];
+
+function loadCalendar(){
+  var be = APP.be !== false;
+  $('#calTitle').text(TH_MONTHS[CAL.month-1] + ' ' + (CAL.year + (be?543:0)));
+  $('#calGrid').html('<div class="p-4 text-center text-muted"><div class="spinner-border spinner-border-sm"></div></div>');
+  api('getMonthlyCalendar', APP.token, CAL.year, CAL.month).then(function(r){
+    if(r.status !== 'success'){ $('#calGrid').html('<div class="p-4 text-center text-muted">โหลดข้อมูลไม่สำเร็จ</div>'); return; }
+    CAL.data = r;
+    renderCalendar(r, be);
+  });
+}
+
+function renderCalendar(r, be){
+  var firstDow = new Date(r.year, r.month - 1, 1).getDay();
+  var lastDay  = r.last_day;
+  var today    = new Date().toISOString().substring(0,10);
+
+  // map วันที่ → leaves
+  var dayLeaves = {};
+  r.leaves.forEach(function(l){
+    var s = new Date(l.start_date), e = new Date(l.end_date);
+    for(var d = new Date(s); d <= e; d.setDate(d.getDate()+1)){
+      var key = d.toISOString().substring(0,10);
+      if(!dayLeaves[key]) dayLeaves[key] = [];
+      dayLeaves[key].push(l);
+    }
+  });
+
+  // map วันหยุด
+  var holidays = {};
+  r.holidays.forEach(function(h){ holidays[h.date] = h.name; });
+
+  // color map by employee_name
+  var colors = ['#3b3f9e','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#84cc16'];
+  var empColor = {};
+  var ci = 0;
+  r.leaves.forEach(function(l){
+    if(!empColor[l.employee_name]) empColor[l.employee_name] = colors[ci++ % colors.length];
+  });
+
+  var html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid var(--bs-border-color,#dee2e6)">';
+  TH_DAYS.forEach(function(d){ html += '<div class="text-center fw-semibold py-2" style="font-size:.8rem;color:#64748b">' + d + '</div>'; });
+  html += '</div><div style="display:grid;grid-template-columns:repeat(7,1fr)">';
+
+  // empty cells
+  for(var i=0; i<firstDow; i++) html += '<div style="border:1px solid var(--bs-border-color,#dee2e6);border-top:0;border-left:0;min-height:80px"></div>';
+
+  for(var day=1; day<=lastDay; day++){
+    var dateStr = r.year + '-' + (r.month<10?'0'+r.month:r.month) + '-' + (day<10?'0'+day:day);
+    var isToday = dateStr === today;
+    var isHoliday = !!holidays[dateStr];
+    var leaves = dayLeaves[dateStr] || [];
+    var col = (firstDow + day - 1) % 7;
+    var isSun = col === 0, isSat = col === 6;
+
+    html += '<div style="border:1px solid var(--bs-border-color,#dee2e6);border-top:0;border-left:0;min-height:80px;padding:4px;'
+      + (isHoliday ? 'background:#fff7ed' : (isSun||isSat ? 'background:#f8fafc' : '')) + '">';
+    html += '<div style="font-size:.78rem;font-weight:'+(isToday?'700':'500')+';color:'+(isToday?'#3b3f9e':(isSun?'#ef4444':'#374151'))+';'
+      + (isToday?'background:#3b3f9e;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;':'')
+      + '">' + day + '</div>';
+    if(isHoliday) html += '<div style="font-size:.65rem;color:#f59e0b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+_esc(holidays[dateStr])+'">🎌 '+_esc(holidays[dateStr])+'</div>';
+    leaves.slice(0,3).forEach(function(l){
+      var c = empColor[l.employee_name] || '#64748b';
+      html += '<div style="font-size:.65rem;background:'+c+'22;color:'+c+';border-left:2px solid '+c+';padding:1px 4px;border-radius:3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+_esc(l.employee_name)+' ('+_esc(l.leave_type_name)+')">'
+        + _esc(l.employee_name) + '</div>';
+    });
+    if(leaves.length > 3) html += '<div style="font-size:.65rem;color:#64748b;margin-top:1px">+' + (leaves.length-3) + ' เพิ่มเติม</div>';
+    html += '</div>';
+  }
+
+  var used = (firstDow + lastDay) % 7;
+  if(used > 0) for(var k=used; k<7; k++) html += '<div style="border:1px solid var(--bs-border-color,#dee2e6);border-top:0;border-left:0;min-height:80px;background:#f8fafc"></div>';
+  html += '</div>';
+  $('#calGrid').html(html);
+
+  // Legend
+  var names = Object.keys(empColor);
+  if(names.length){
+    var leg = '';
+    names.forEach(function(n){ leg += '<span style="font-size:.78rem;display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:50%;background:'+empColor[n]+';flex-shrink:0"></span>'+_esc(n)+'</span>'; });
+    $('#calLegendBody').html(leg);
+    $('#calLegend').removeClass('d-none');
+  } else {
+    $('#calLegend').addClass('d-none');
+  }
+}
+</script>

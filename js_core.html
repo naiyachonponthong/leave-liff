@@ -1,0 +1,230 @@
+<script>
+/* ============================================================
+   CORE — api wrapper, session, login, navigation
+   ============================================================ */
+var APP = { token: null, user: null, be: true };
+var TOKEN_KEY = 'leave_token';
+var THEME_KEY = 'leave_theme';
+window.PAGE_HOOKS = {};
+
+function api(fn){
+  var args = Array.prototype.slice.call(arguments, 1);
+  return new Promise(function(resolve, reject){
+    google.script.run
+      .withSuccessHandler(resolve)
+      .withFailureHandler(reject)
+      [fn].apply(google.script.run, args);
+  });
+}
+
+$(document).ready(function(){
+  applyTheme(localStorage.getItem(THEME_KEY) === 'dark');
+  $('#btnTheme').on('click', toggleTheme);
+  loadBrand();
+  restoreSession();
+
+  $('#loginForm').on('submit', function(e){ e.preventDefault(); doLogin(); });
+
+  $('#togglePw').on('click', function(){
+    var inp = $('#pw');
+    var t = inp.attr('type') === 'password' ? 'text' : 'password';
+    inp.attr('type', t);
+    $(this).find('i').toggleClass('fi-rr-eye fi-rr-eye-crossed');
+  });
+
+  $('#btnLogout').on('click', doLogout);
+
+  $('.nav-link[data-page]').on('click', function(e){
+    e.preventDefault();
+    navigate($(this).data('page'));
+    closeSidebar();
+  });
+
+  $('#btnMenu').on('click', function(){ $('#sidebar').addClass('open'); $('#backdrop').show(); });
+  $('#backdrop').on('click', closeSidebar);
+});
+
+function closeSidebar(){ $('#sidebar').removeClass('open'); $('#backdrop').hide(); }
+
+function loadBrand(){
+  api('getAppInfo').then(function(r){
+    if(r.app_name){ $('.brand-name').text(r.app_name); document.title = r.app_name; }
+    if(r.app_version){ $('.app-ver').text(r.app_version); }
+    APP.be = (r.buddhist_era !== false);
+    if(r.logo_url){
+      $('.brand-logo').attr('src', r.logo_url).removeClass('d-none');
+      $('.brand-logo-fallback').addClass('d-none');
+    }
+    if(!r.initialized){ showSetup(); }
+  }).catch(function(){});
+}
+
+function showSetup(){
+  Swal.fire({
+    title: 'ติดตั้งระบบครั้งแรก',
+    text: 'ยังไม่พบชีตข้อมูล กดเพื่อสร้างชีตและข้อมูลเริ่มต้นทั้งหมด',
+    icon: 'info',
+    confirmButtonText: 'ติดตั้งเลย',
+    confirmButtonColor: '#3b3f9e',
+    allowOutsideClick: false
+  }).then(function(res){
+    if(res.isConfirmed){
+      Swal.fire({ title: 'กำลังติดตั้ง...', didOpen: function(){ Swal.showLoading(); }, allowOutsideClick: false });
+      api('initializeSheets').then(function(r){
+        Swal.fire({
+          icon: r.status === 'success' ? 'success' : 'error',
+          title: r.message,
+          confirmButtonColor: '#3b3f9e'
+        });
+      });
+    }
+  });
+}
+
+function doLogin(){
+  var u = $('#username').val().trim();
+  var p = $('#pw').val();
+  if(!u || !p){ toast('error', 'กรุณากรอกข้อมูลให้ครบ'); return; }
+
+  var btn = $('#btnLogin');
+  btn.prop('disabled', true).text('กำลังเข้าสู่ระบบ...');
+
+  api('login', u, p).then(function(r){
+    btn.prop('disabled', false).text('เข้าสู่ระบบ');
+    if(r.status === 'success'){
+      APP.token = r.token; APP.user = r.user;
+      if($('#remember').is(':checked')){ localStorage.setItem(TOKEN_KEY, r.token); }
+      else { sessionStorage.setItem(TOKEN_KEY, r.token); }
+      enterApp();
+    } else {
+      toast('error', r.message);
+    }
+  }).catch(function(){
+    btn.prop('disabled', false).text('เข้าสู่ระบบ');
+    toast('error', 'เชื่อมต่อไม่สำเร็จ ลองใหม่อีกครั้ง');
+  });
+}
+
+function restoreSession(){
+  var token = localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
+  if(!token) return;
+  api('checkSession', token).then(function(r){
+    if(r.status === 'success'){
+      APP.token = token; APP.user = r.user; enterApp();
+    } else {
+      localStorage.removeItem(TOKEN_KEY); sessionStorage.removeItem(TOKEN_KEY);
+    }
+  }).catch(function(){});
+}
+
+function enterApp(){
+  $('#view-login').addClass('d-none');
+  $('#view-app').removeClass('d-none');
+  $('#userName').text(APP.user.name);
+  $('#hiName').text(APP.user.name);
+  $('#userRole').text(roleLabel(APP.user.role));
+  $('#userInitial').text((APP.user.name || 'U').charAt(0));
+  applyPermissions();
+  navigate('dashboard');
+  if(window.refreshApprovalBadge){ refreshApprovalBadge(); }
+}
+
+function applyPermissions(){
+  var perms = APP.user.permissions || [];
+  $('.nav-link[data-page]').each(function(){
+    var pg = $(this).data('page');
+    if(pg === 'dashboard' || pg === 'help'){ return; }
+    if(perms.indexOf(pg) === -1){ $(this).closest('li').addClass('d-none'); }
+    else { $(this).closest('li').removeClass('d-none'); }
+  });
+}
+
+function doLogout(){
+  Swal.fire({
+    title: 'ออกจากระบบ?',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'ออกจากระบบ',
+    cancelButtonText: 'ยกเลิก',
+    confirmButtonColor: '#3b3f9e'
+  }).then(function(res){
+    if(res.isConfirmed){
+      api('logout', APP.token);
+      localStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem(TOKEN_KEY);
+      location.reload();
+    }
+  });
+}
+
+function navigate(page){
+  $('.nav-link[data-page]').removeClass('active');
+  $('.nav-link[data-page="' + page + '"]').addClass('active');
+  $('.page-section').addClass('d-none');
+  $('#page-' + page).removeClass('d-none');
+  if(window.PAGE_HOOKS && PAGE_HOOKS[page]){ try{ PAGE_HOOKS[page](); }catch(e){} }
+}
+
+window.PAGE_HOOKS.help = function(){
+  $('#helpTabs button').off('click').on('click', function(){
+    var t = $(this).data('htab');
+    $('#helpTabs button').removeClass('active'); $(this).addClass('active');
+    $('.help-pane').addClass('d-none'); $('#htab-' + t).removeClass('d-none');
+  });
+};
+
+function loadDashboard(){
+  api('getDashboardSummary', APP.token).then(function(r){
+    if(r && r.status === 'success'){
+      $('#kpiPending').text(r.pending_approval);
+      $('#kpiToday').text(r.on_leave_today);
+      $('#kpiMonth').text(r.leave_this_month);
+      $('#kpiEmployees').text(r.total_employees);
+    }
+  }).catch(function(){});
+}
+
+function applyTheme(dark){
+  var html = document.documentElement;
+  html.setAttribute('data-theme', dark ? 'dark' : 'light');
+  html.setAttribute('data-bs-theme', dark ? 'dark' : 'light');
+  $('#btnTheme i').attr('class', dark ? 'fi fi-rr-sun' : 'fi fi-rr-moon-stars');
+}
+function toggleTheme(){
+  var dark = document.documentElement.getAttribute('data-theme') !== 'dark';
+  localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light');
+  applyTheme(dark);
+}
+function roleLabel(role){
+  var map = { admin: 'ผู้ดูแลระบบ', hr: 'ฝ่ายบุคคล (HR)', supervisor: 'หัวหน้างาน' };
+  return map[role] || role;
+}
+
+function toast(icon, title){
+  Swal.fire({
+    toast: true, position: 'top-end', icon: icon, title: title,
+    showConfirmButton: false, timer: 2600, timerProgressBar: true
+  });
+}
+
+function setBtnLoading(sel, on){
+  var $b = $(sel);
+  if(on){ $b.addClass('btn-spin').prop('disabled', true); }
+  else  { $b.removeClass('btn-spin').prop('disabled', false); }
+}
+
+// tblSkel(selector, cols, rows) — ใส่ skeleton rows ลงใน tbody ขณะโหลด
+function tblSkel(sel, cols, rows){
+  rows = rows || 5;
+  var widths = ['w-50','w-30','w-70','full','w-30'];
+  var h = '';
+  for(var r=0;r<rows;r++){
+    h += '<tr class="skel-row">';
+    for(var c=0;c<cols;c++){
+      h += '<td><div class="skel-cell skel ' + widths[c % widths.length] + '">\x3c/div>\x3c/td>';
+    }
+    h += '\x3c/tr>';
+  }
+  $(sel).html(h);
+}
+</script>

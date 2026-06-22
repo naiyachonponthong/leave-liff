@@ -1,0 +1,270 @@
+<script>
+/* ============================================================
+   MASTER DATA — leave types / departments / holidays
+   ============================================================ */
+var MASTER = { leaveTypes: [], depts: [], holidays: [], year: new Date().getFullYear() };
+
+function _esc(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/\x3c/g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function _toBE(y){ return Number(y) + 543; }
+
+$(document).ready(function(){
+  $('#masterTabs button').on('click', function(){
+    var t = $(this).data('mtab');
+    $('#masterTabs button').removeClass('active');
+    $(this).addClass('active');
+    $('.master-pane').addClass('d-none');
+    $('#mpane-' + t).removeClass('d-none');
+  });
+
+  var yopt = '';
+  var nowY = new Date().getFullYear();
+  for(var y = nowY + 1; y >= nowY - 3; y--){ yopt += '<option value="' + y + '">' + _toBE(y) + '\x3c/option>'; }
+  $('#holidayYear').html(yopt).val(nowY);
+  $('#holidayYear').on('change', function(){ MASTER.year = $(this).val(); loadHolidays(); });
+
+  $('#btnAddLeaveType').on('click', function(){ openLeaveType(null); });
+  $('#btnAddDept').on('click', function(){ openDept(null); });
+  $('#btnAddHoliday').on('click', function(){ openHoliday(null); });
+
+  $('#btnSaveLeaveType').on('click', saveLeaveType);
+  $('#btnSaveDept').on('click', saveDept);
+  $('#btnSaveHoliday').on('click', saveHoliday);
+  $('#btnSeedHoliday').on('click', seedHolidays);
+});
+
+window.PAGE_HOOKS.master = function(){ loadLeaveTypes(); loadDepts(); loadHolidays(); };
+
+/* ---------- LEAVE TYPES ---------- */
+function loadLeaveTypes(){
+  tblSkel('#tblLeaveType', 5);
+  api('getLeaveTypes', APP.token).then(function(r){
+    if(r.status !== 'success') return;
+    MASTER.leaveTypes = r.data;
+    var html = '';
+    if(!r.data.length){ html = '<tr><td colspan="7" class="text-center text-muted py-4">ยังไม่มีข้อมูล\x3c/td>\x3c/tr>'; }
+    r.data.forEach(function(t){
+      html += '<tr>'
+        + '<td><span class="lt-color" style="background:' + _esc(t.color) + '">\x3c/span>' + _esc(t.name) + '\x3c/td>'
+        + '<td><span class="badge badge-soft">' + _esc(t.code || '-') + '\x3c/span>\x3c/td>'
+        + '<td class="text-center">' + (t.default_quota_days ? t.default_quota_days : 'ไม่จำกัด') + '\x3c/td>'
+        + '<td class="text-center">' + (t.requires_attachment ? '<i class="fi fi-rr-check text-success">\x3c/i>' : '-') + '\x3c/td>'
+        + '<td class="text-center">' + (t.allow_half_day ? '<i class="fi fi-rr-check text-success">\x3c/i>' : '-') + '\x3c/td>'
+        + '<td class="text-center">' + statusBadge(t.active) + '\x3c/td>'
+        + '<td class="text-end">' + rowBtns('LeaveType', t.id) + '\x3c/td>'
+        + '\x3c/tr>';
+    });
+    $('#tblLeaveType').html(html);
+    bindRowBtns('LeaveType', MASTER.leaveTypes, openLeaveType, delLeaveType);
+  });
+}
+
+function openLeaveType(item){
+  $('#ltId').val(item ? item.id : '');
+  $('#ltTitle').text(item ? 'แก้ไขประเภทการลา' : 'เพิ่มประเภทการลา');
+  $('#ltName').val(item ? item.name : '');
+  $('#ltCode').val(item ? item.code : '');
+  $('#ltQuota').val(item ? item.default_quota_days : 0);
+  $('#ltColor').val(item ? (item.color || '#3b3f9e') : '#3b3f9e');
+  $('#ltAttach').prop('checked', item ? !!item.requires_attachment : false);
+  $('#ltHalf').prop('checked', item ? item.allow_half_day !== false : true);
+  $('#ltActive').prop('checked', item ? item.active !== false : true);
+  $('#ltSeniority').val(item && item.seniority_tiers ? JSON.stringify(item.seniority_tiers) : '[]');
+  new bootstrap.Modal('#modalLeaveType').show();
+}
+
+function saveLeaveType(){
+  var obj = {
+    id: $('#ltId').val() || undefined,
+    name: $('#ltName').val().trim(),
+    code: $('#ltCode').val().trim(),
+    default_quota_days: $('#ltQuota').val(),
+    color: $('#ltColor').val(),
+    requires_attachment: $('#ltAttach').is(':checked'),
+    allow_half_day: $('#ltHalf').is(':checked'),
+    active: $('#ltActive').is(':checked')
+  };
+  try { obj.seniority_tiers = JSON.parse($('#ltSeniority').val() || '[]'); } catch(e){ obj.seniority_tiers = []; }
+  if(!obj.name){ toast('error','กรุณากรอกชื่อประเภท'); return; }
+  api('saveLeaveType', APP.token, obj).then(function(r){
+    toast(r.status === 'success' ? 'success' : 'error', r.message);
+    if(r.status === 'success'){ bootstrap.Modal.getInstance(document.getElementById('modalLeaveType')).hide(); loadLeaveTypes(); }
+  });
+}
+
+function delLeaveType(item){
+  confirmDelete(item.name, function(){
+    api('deleteLeaveType', APP.token, item.id).then(function(r){
+      toast(r.status === 'success' ? 'success' : 'error', r.message); loadLeaveTypes();
+    });
+  });
+}
+
+/* ---------- DEPARTMENTS ---------- */
+function loadDepts(){
+  tblSkel('#tblDept', 4);
+  api('getDepartments', APP.token).then(function(r){
+    if(r.status !== 'success') return;
+    MASTER.depts = r.data;
+    var html = '';
+    if(!r.data.length){ html = '<tr><td colspan="5" class="text-center text-muted py-4">ยังไม่มีข้อมูล\x3c/td>\x3c/tr>'; }
+    r.data.forEach(function(d){
+      html += '<tr>'
+        + '<td>' + _esc(d.name) + '\x3c/td>'
+        + '<td><span class="badge badge-soft">' + _esc(d.code || '-') + '\x3c/span>\x3c/td>'
+        + '<td class="text-muted">' + _esc(d.head_user_name || 'ยังไม่กำหนด') + '\x3c/td>'
+        + '<td class="text-center">' + statusBadge(d.active) + '\x3c/td>'
+        + '<td class="text-end">' + rowBtns('Dept', d.id) + '\x3c/td>'
+        + '\x3c/tr>';
+    });
+    $('#tblDept').html(html);
+    bindRowBtns('Dept', MASTER.depts, openDept, delDept);
+  });
+}
+
+function openDept(item){
+  $('#deptId').val(item ? item.id : '');
+  $('#deptTitle').text(item ? 'แก้ไขแผนก' : 'เพิ่มแผนก');
+  $('#deptName').val(item ? item.name : '');
+  $('#deptCode').val(item ? item.code : '');
+  $('#deptActive').prop('checked', item ? item.active !== false : true);
+  api('getUsers', APP.token).then(function(r){
+    var $sel = $('#deptHead').empty();
+    (r.data || []).filter(function(u){ return u.role === 'supervisor' && u.active !== false; })
+      .forEach(function(u){
+        var cur = item ? (Array.isArray(item.head_user_ids) ? item.head_user_ids : (item.head_user_id ? [item.head_user_id] : [])) : [];
+        $sel.append(new Option(_esc(u.name), u.id, false, cur.indexOf(u.id) !== -1));
+      });
+    if($.fn.select2) $sel.select2({ dropdownParent: $('#modalDept'), placeholder: 'ยังไม่กำหนด', allowClear: true });
+  });
+  new bootstrap.Modal('#modalDept').show();
+}
+
+function saveDept(){
+  var headIds = $('#deptHead').val() || [];
+  var obj = {
+    id: $('#deptId').val() || undefined,
+    name: $('#deptName').val().trim(),
+    code: $('#deptCode').val().trim(),
+    head_user_ids: Array.isArray(headIds) ? headIds : (headIds ? [headIds] : []),
+    active: $('#deptActive').is(':checked')
+  };
+  if(!obj.name){ toast('error','กรุณากรอกชื่อแผนก'); return; }
+  api('saveDepartment', APP.token, obj).then(function(r){
+    toast(r.status === 'success' ? 'success' : 'error', r.message);
+    if(r.status === 'success'){ bootstrap.Modal.getInstance(document.getElementById('modalDept')).hide(); loadDepts(); }
+  });
+}
+
+function delDept(item){
+  confirmDelete(item.name, function(){
+    api('deleteDepartment', APP.token, item.id).then(function(r){
+      toast(r.status === 'success' ? 'success' : 'error', r.message); loadDepts();
+    });
+  });
+}
+
+/* ---------- HOLIDAYS ---------- */
+function loadHolidays(){
+  tblSkel('#tblHoliday', 4);
+  api('getHolidays', APP.token, MASTER.year).then(function(r){
+    if(r.status !== 'success') return;
+    MASTER.holidays = r.data;
+    var html = '';
+    if(!r.data.length){ html = '<tr><td colspan="4" class="text-center text-muted py-4">ยังไม่มีวันหยุดในปีนี้\x3c/td>\x3c/tr>'; }
+    r.data.forEach(function(h){
+      html += '<tr>'
+        + '<td>' + fmtDateBE(h.date) + '\x3c/td>'
+        + '<td>' + _esc(h.name) + '\x3c/td>'
+        + '<td>' + (h.type === 'company' ? '<span class="badge badge-soft">บริษัท\x3c/span>' : '<span class="badge badge-soft">ราชการ\x3c/span>') + '\x3c/td>'
+        + '<td class="text-end">' + rowBtns('Hol', h.id) + '\x3c/td>'
+        + '\x3c/tr>';
+    });
+    $('#tblHoliday').html(html);
+    bindRowBtns('Hol', MASTER.holidays, openHoliday, delHoliday);
+  });
+}
+
+function openHoliday(item){
+  $('#holId').val(item ? item.id : '');
+  $('#holTitle').text(item ? 'แก้ไขวันหยุด' : 'เพิ่มวันหยุด');
+  $('#holName').val(item ? item.name : '');
+  $('#holDate').val(item ? item.date : (MASTER.year + '-01-01'));
+  $('#holType').val(item ? item.type : 'public');
+  new bootstrap.Modal('#modalHoliday').show();
+}
+
+function saveHoliday(){
+  var obj = {
+    id: $('#holId').val() || undefined,
+    name: $('#holName').val().trim(),
+    date: $('#holDate').val(),
+    type: $('#holType').val()
+  };
+  if(!obj.name || !obj.date){ toast('error','กรุณากรอกชื่อและวันที่'); return; }
+  api('saveHoliday', APP.token, obj).then(function(r){
+    toast(r.status === 'success' ? 'success' : 'error', r.message);
+    if(r.status === 'success'){
+      bootstrap.Modal.getInstance(document.getElementById('modalHoliday')).hide();
+      MASTER.year = obj.date.substring(0,4); $('#holidayYear').val(MASTER.year); loadHolidays();
+    }
+  });
+}
+
+function delHoliday(item){
+  confirmDelete(item.name, function(){
+    api('deleteHoliday', APP.token, item.id).then(function(r){
+      toast(r.status === 'success' ? 'success' : 'error', r.message); loadHolidays();
+    });
+  });
+}
+
+function seedHolidays(){
+  Swal.fire({
+    title: 'เพิ่มวันหยุดราชการ?',
+    text: 'เพิ่มวันหยุดวันที่ตายตัวของปี ' + _toBE(MASTER.year) + ' (วันพระ/จันทรคติต้องเพิ่มเอง)',
+    icon: 'question', showCancelButton: true, confirmButtonText: 'เพิ่มเลย', cancelButtonText: 'ยกเลิก',
+    confirmButtonColor: '#3b3f9e'
+  }).then(function(res){
+    if(res.isConfirmed){
+      api('seedThaiHolidays', APP.token, MASTER.year).then(function(r){
+        toast(r.status === 'success' ? 'success' : 'error', r.message); loadHolidays();
+      });
+    }
+  });
+}
+
+/* ---------- shared helpers ---------- */
+function statusBadge(active){
+  return active
+    ? '<span class="badge text-bg-success">ใช้งาน\x3c/span>'
+    : '<span class="badge text-bg-secondary">ปิด\x3c/span>';
+}
+function rowBtns(ns, id){
+  return '<button class="btn btn-sm btn-ghost me-1 b-edit-' + ns + '" data-id="' + id + '"><i class="fi fi-rr-pencil">\x3c/i>\x3c/button>'
+       + '<button class="btn btn-sm btn-ghost text-danger b-del-' + ns + '" data-id="' + id + '"><i class="fi fi-rr-trash">\x3c/i>\x3c/button>';
+}
+function bindRowBtns(ns, list, onEdit, onDel){
+  $('.b-edit-' + ns).off('click').on('click', function(){
+    var id = $(this).data('id'); onEdit(list.filter(function(x){ return x.id === id; })[0]);
+  });
+  $('.b-del-' + ns).off('click').on('click', function(){
+    var id = $(this).data('id'); onDel(list.filter(function(x){ return x.id === id; })[0]);
+  });
+}
+function confirmDelete(name, cb){
+  Swal.fire({
+    title: 'ลบ "' + name + '"?', icon: 'warning', showCancelButton: true,
+    confirmButtonText: 'ลบ', cancelButtonText: 'ยกเลิก', confirmButtonColor: '#dc3545'
+  }).then(function(r){ if(r.isConfirmed) cb(); });
+}
+function fmtDateBE(iso){
+  if(!iso) return '-';
+  var p = iso.split('-');
+  var m = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  var be = (window.APP && APP.be === false) ? 0 : 543;
+  return Number(p[2]) + ' ' + m[Number(p[1]) - 1] + ' ' + (Number(p[0]) + be);
+}
+</script>

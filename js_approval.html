@@ -1,0 +1,129 @@
+<script>
+/* ============================================================
+   APPROVAL QUEUE — approve / reject (2-level)
+   ============================================================ */
+window.PAGE_HOOKS.approval = loadApprovalQueue;
+
+window.refreshApprovalBadge = function(){
+  api('getApprovalCount', APP.token).then(function(r){
+    var n = r.count || 0;
+    var b = $('#approvalBadge');
+    if(n > 0){ b.text(n).removeClass('d-none'); } else { b.addClass('d-none'); }
+  }).catch(function(){});
+};
+
+function loadApprovalQueue(){
+  tblSkel('#tblApproval', 7);
+  api('getApprovalQueue', APP.token).then(function(r){
+    if(r.status !== 'success'){ toast('error', r.message || 'โหลดไม่สำเร็จ'); return; }
+    var html = '';
+    if(!r.data.length){ html = '<tr><td colspan="8" class="text-center text-muted py-4">ไม่มีรายการรออนุมัติ\x3c/td>\x3c/tr>'; }
+    r.data.forEach(function(d){
+      var range = fmtDateBE(d.start_date) + (d.start_date !== d.end_date ? ' - ' + fmtDateBE(d.end_date) : '');
+      html += '<tr>'
+        + '<td><input type="checkbox" class="form-check-input chk-row" value="' + d.id + '">\x3c/td>'
+        + '<td><span class="badge badge-soft">' + _esc(d.request_no) + '\x3c/span>\x3c/td>'
+        + '<td>' + _esc(d.employee_name) + '<br><small class="text-muted">' + _esc(d.department_name || '') + '\x3c/small>\x3c/td>'
+        + '<td>' + _esc(d.leave_type_name) + '\x3c/td>'
+        + '<td>' + range + '\x3c/td>'
+        + '<td class="text-center">' + d.total_days + '\x3c/td>'
+        + '<td class="text-center"><span class="badge text-bg-info">ระดับ ' + d.waiting_level + '\x3c/span>\x3c/td>'
+        + '<td class="text-end text-nowrap">'
+          + '<button class="btn btn-sm btn-ghost a-view" data-id="' + d.id + '"><i class="fi fi-rr-eye">\x3c/i>\x3c/button> '
+          + '<button class="btn btn-sm btn-brand a-ok" data-id="' + d.id + '">อนุมัติ\x3c/button> '
+          + '<button class="btn btn-sm btn-outline-danger a-no" data-id="' + d.id + '">ปฏิเสธ\x3c/button>'
+        + '\x3c/td>\x3c/tr>';
+    });
+    $('#tblApproval').html(html);
+    $('.a-view').off('click').on('click', function(){ openDetail($(this).data('id')); });
+    $('.a-ok').off('click').on('click', function(){ doApprove($(this).data('id')); });
+    $('.a-no').off('click').on('click', function(){ doReject($(this).data('id')); });
+    // bind checkboxes
+    $('#chkAll').off('change').on('change', function(){
+      $('.chk-row').prop('checked', this.checked);
+      updateBulkBar();
+    });
+    $('.chk-row').off('change').on('change', updateBulkBar);
+  });
+}
+
+function doApprove(id){
+  Swal.fire({
+    title: 'อนุมัติใบลา?',
+    input: 'text', inputplaceholder: 'ความเห็น (ถ้ามี)',
+    showCancelButton: true, confirmButtonText: 'อนุมัติ', cancelButtonText: 'ยกเลิก',
+    confirmButtonColor: '#3b3f9e'
+  }).then(function(res){
+    if(res.isConfirmed){
+      api('approveLeave', APP.token, id, res.value || '').then(function(r){
+        toast(r.status === 'success' ? 'success' : 'error', r.message);
+        if(r.status === 'success'){ loadApprovalQueue(); refreshApprovalBadge(); }
+      });
+    }
+  });
+}
+
+function doReject(id){
+  Swal.fire({
+    title: 'ไม่อนุมัติใบลา',
+    input: 'text', inputplaceholder: 'ระบุเหตุผล (จำเป็น)',
+    inputValidator: function(v){ if(!v) return 'กรุณาระบุเหตุผล'; },
+    showCancelButton: true, confirmButtonText: 'ยืนยันไม่อนุมัติ', cancelButtonText: 'ยกเลิก',
+    confirmButtonColor: '#dc3545'
+  }).then(function(res){
+    if(res.isConfirmed){
+      api('rejectLeave', APP.token, id, res.value).then(function(r){
+        toast(r.status === 'success' ? 'success' : 'error', r.message);
+        if(r.status === 'success'){ loadApprovalQueue(); refreshApprovalBadge(); }
+      });
+    }
+  });
+}
+
+function updateBulkBar(){
+  var checked = $('.chk-row:checked');
+  var n = checked.length;
+  if(n > 0){
+    $('#bulkBar').removeClass('d-none');
+    $('#bulkCount').text('เลือก ' + n + ' รายการ');
+  } else {
+    $('#bulkBar').addClass('d-none');
+    $('#chkAll').prop('checked', false);
+  }
+}
+
+$(document).ready(function(){
+  $('#btnBulkApprove').off('click').on('click', function(){
+    var ids = $('.chk-row:checked').map(function(){ return this.value; }).get();
+    if(!ids.length) return;
+    Swal.fire({ title:'อนุมัติ ' + ids.length + ' รายการ?', input:'text', inputPlaceholder:'ความเห็น (ถ้ามี)',
+      showCancelButton:true, confirmButtonText:'อนุมัติทั้งหมด', cancelButtonText:'ยกเลิก', confirmButtonColor:'#3b3f9e'
+    }).then(function(res){
+      if(!res.isConfirmed) return;
+      setBtnLoading('#btnBulkApprove', true);
+      api('bulkApproveLeave', APP.token, ids, res.value||'').then(function(r){
+        setBtnLoading('#btnBulkApprove', false);
+        toast(r.status==='success'?'success':'error', r.message);
+        loadApprovalQueue(); refreshApprovalBadge();
+      }).catch(function(){ setBtnLoading('#btnBulkApprove', false); });
+    });
+  });
+
+  $('#btnBulkReject').off('click').on('click', function(){
+    var ids = $('.chk-row:checked').map(function(){ return this.value; }).get();
+    if(!ids.length) return;
+    Swal.fire({ title:'ไม่อนุมัติ ' + ids.length + ' รายการ', input:'text', inputPlaceholder:'ระบุเหตุผล (จำเป็น)',
+      showCancelButton:true, confirmButtonText:'ยืนยัน', cancelButtonText:'ยกเลิก', confirmButtonColor:'#ef4444',
+      preConfirm:function(v){ if(!v){ Swal.showValidationMessage('กรุณาระบุเหตุผล'); return false; } return v; }
+    }).then(function(res){
+      if(!res.isConfirmed) return;
+      setBtnLoading('#btnBulkReject', true);
+      api('bulkRejectLeave', APP.token, ids, res.value).then(function(r){
+        setBtnLoading('#btnBulkReject', false);
+        toast(r.status==='success'?'success':'error', r.message);
+        loadApprovalQueue(); refreshApprovalBadge();
+      }).catch(function(){ setBtnLoading('#btnBulkReject', false); });
+    });
+  });
+});
+</script>

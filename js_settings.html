@@ -1,0 +1,156 @@
+<script>
+/* ============================================================
+   SETTINGS — config + logo upload
+   ============================================================ */
+var WORK_DAYS = [['MO','จ'],['TU','อ'],['WE','พ'],['TH','พฤ'],['FR','ศ'],['SA','ส'],['SU','อา']];
+
+$(document).ready(function(){
+  // วันทำงาน chips
+  var dhtml = '';
+  WORK_DAYS.forEach(function(d){ dhtml += '<span class="day-chip" data-day="' + d[0] + '">' + d[1] + '\x3c/span>'; });
+  $('#workDays').html(dhtml);
+  $('#workDays').on('click', '.day-chip', function(){ $(this).toggleClass('on'); });
+
+  // เลือกโลโก้
+  $('#btnPickLogo').on('click', function(){ $('#logoFile').trigger('click'); });
+  $('#logoFile').on('change', handleLogoUpload);
+
+  // สร้างโฟลเดอร์ Drive
+  $('#btnCreateFolder').on('click', function(){
+    setBtnLoading('#btnCreateFolder', true);
+    api('createDriveFolder', APP.token).then(function(r){
+      setBtnLoading('#btnCreateFolder', false);
+      toast(r.status === 'success' ? 'success' : 'error', r.message);
+      if(r.status === 'success'){ $('#cfgFolderId').val(r.folder_id); }
+    }).catch(function(){ setBtnLoading('#btnCreateFolder', false); });
+  });
+
+  // toggle ระดับ 2
+  $('#cfgLevels').on('change', function(){ $('#boxL2').toggle($(this).val() === '2'); });
+
+  $('#btnSaveConfig').on('click', saveSettings);
+
+  $('#btnCarryForward').on('click', function(){
+    var lastYear = new Date().getFullYear() - 1;
+    Swal.fire({ title:'ยกยอดวันลา', html:'ยกยอดวันคงเหลือจากปี <b>' + (lastYear+543) + '</b> ไปปี <b>' + (lastYear+544) + '</b>?<br><small class="text-muted">เฉพาะประเภทลาที่เปิดใช้ "ยกยอดวันลา"</small>',
+      showCancelButton:true, confirmButtonText:'ยกยอด', cancelButtonText:'ยกเลิก', confirmButtonColor:'#3b3f9e'
+    }).then(function(res){
+      if(!res.isConfirmed) return;
+      setBtnLoading('#btnCarryForward', true);
+      api('carryForwardBalances', APP.token, lastYear).then(function(r){
+        setBtnLoading('#btnCarryForward', false);
+        toast(r.status==='success'?'success':'error', r.message);
+      }).catch(function(){ setBtnLoading('#btnCarryForward', false); });
+    });
+  });
+
+  $('#btnSetupRichMenu').on('click', function(){
+    Swal.fire({ title:'ตั้งค่า Rich Menu?', text:'จะสร้าง Rich Menu LINE ให้ทุกผู้ใช้ (ต้องตั้งค่า LIFF ID ก่อน)', icon:'question',
+      showCancelButton:true, confirmButtonText:'ตั้งค่า', cancelButtonText:'ยกเลิก', confirmButtonColor:'#3b3f9e'
+    }).then(function(res){
+      if(!res.isConfirmed) return;
+      setBtnLoading('#btnSetupRichMenu', true);
+      api('setupRichMenu', APP.token).then(function(r){
+        setBtnLoading('#btnSetupRichMenu', false);
+        Swal.fire({ icon: r.status==='success'?'success':'error', title: r.message });
+      }).catch(function(){ setBtnLoading('#btnSetupRichMenu', false); });
+    });
+  });
+
+  $('#btnTestLine').on('click', function(){
+    var uid = $('#cfgTestLine').val().trim();
+    if(!uid){ toast('error','วาง LINE userId ก่อน'); return; }
+    setBtnLoading('#btnTestLine', true);
+    api('testLinePush', APP.token, uid).then(function(r){
+      setBtnLoading('#btnTestLine', false);
+      toast(r.status === 'success' ? 'success' : 'error', r.message);
+    }).catch(function(){ setBtnLoading('#btnTestLine', false); });
+  });
+});
+
+window.PAGE_HOOKS.settings = loadSettings;
+
+function loadSettings(){
+  api('getConfig', APP.token).then(function(r){
+    if(r.status !== 'success'){ toast('error', r.message); return; }
+    var c = r.config;
+    $('#cfgAppName').val(c.app_name || '');
+    $('#cfgFolderId').val(c.folder_id || '');
+    $('#cfgLineToken').val(c.line_channel_access_token || '');
+    $('#cfgLineSecret').val(c.line_channel_secret || '');
+    $('#cfgLiffId').val(c.line_liff_id || '');
+    $('#cfgLevels').val(String(c.approval_levels || 2));
+    $('#cfgL1').val(c.level1_role || 'supervisor');
+    $('#cfgL2').val(c.level2_role || 'hr');
+    $('#boxL2').toggle(String(c.approval_levels || 2) === '2');
+    $('#cfgWorkHours').val(c.work_hours || '08:00-17:00');
+    $('#cfgHalfDay').prop('checked', c.half_day_enabled !== false);
+    $('#cfgBE').prop('checked', c.buddhist_era !== false);
+    $('#cfgNotify').prop('checked', c.notification_enabled !== false);
+
+    var days = c.work_days || ['MO','TU','WE','TH','FR'];
+    $('#workDays .day-chip').each(function(){
+      $(this).toggleClass('on', days.indexOf($(this).data('day')) !== -1);
+    });
+
+    if(c.logo_file_id){
+      var url = 'https://drive.google.com/thumbnail?id=' + c.logo_file_id + '&sz=s200';
+      $('#logoPreview').html('<img src="' + url + '" alt="logo">');
+    } else {
+      $('#logoPreview').html('<i class="fi fi-rr-picture">\x3c/i>');
+    }
+  });
+}
+
+function saveSettings(){
+  var days = [];
+  $('#workDays .day-chip.on').each(function(){ days.push($(this).data('day')); });
+
+  var payload = {
+    app_name: $('#cfgAppName').val().trim(),
+    folder_id: $('#cfgFolderId').val().trim(),
+    line_channel_access_token: $('#cfgLineToken').val().trim(),
+    line_channel_secret: $('#cfgLineSecret').val().trim(),
+    line_liff_id: $('#cfgLiffId').val().trim(),
+    approval_levels: Number($('#cfgLevels').val()),
+    level1_role: $('#cfgL1').val(),
+    level2_role: $('#cfgL2').val(),
+    work_days: days,
+    work_hours: $('#cfgWorkHours').val().trim(),
+    half_day_enabled: $('#cfgHalfDay').is(':checked'),
+    buddhist_era: $('#cfgBE').is(':checked'),
+    notification_enabled: $('#cfgNotify').is(':checked')
+  };
+
+  setBtnLoading('#btnSaveConfig', true);
+  api('saveConfig', APP.token, payload).then(function(r){
+    setBtnLoading('#btnSaveConfig', false);
+    toast(r.status === 'success' ? 'success' : 'error', r.message);
+    if(r.status === 'success'){ $('.brand-name').text(payload.app_name); }
+  }).catch(function(){ setBtnLoading('#btnSaveConfig', false); });
+}
+
+function handleLogoUpload(e){
+  var file = e.target.files[0];
+  if(!file) return;
+  if(file.size > 2 * 1024 * 1024){ toast('error','ไฟล์ใหญ่เกิน 2MB'); return; }
+
+  var reader = new FileReader();
+  reader.onload = function(ev){
+    var base64 = ev.target.result.split(',')[1];
+    Swal.fire({ title:'กำลังอัพโหลด...', didOpen:function(){ Swal.showLoading(); }, allowOutsideClick:false });
+    api('uploadLogo', APP.token, base64, file.name, file.type).then(function(r){
+      if(r.status === 'success'){
+        Swal.close();
+        toast('success', r.message);
+        $('#logoPreview').html('<img src="' + r.logo_url + '" alt="logo">');
+        $('#cfgFolderId').val('');
+        loadBrand();
+      } else {
+        Swal.fire({ icon:'error', title:r.message });
+      }
+    }).catch(function(err){ Swal.fire({ icon:'error', title:'อัพโหลดไม่สำเร็จ', text:String(err) }); });
+  };
+  reader.readAsDataURL(file);
+}
+</script>

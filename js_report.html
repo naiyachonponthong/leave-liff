@@ -1,0 +1,122 @@
+<script>
+/* ============================================================
+   REPORTS — summary + detail + CSV export + print PDF
+   ============================================================ */
+var REPORT = { last: null };
+var GROUP_LABEL = { employee: 'พนักงาน', department: 'แผนก', type: 'ประเภทลา' };
+
+window.PAGE_HOOKS.report = function(){
+  var nowY = new Date().getFullYear();
+  if(!$('#rpYear option').length){
+    var o = '';
+    for(var y = nowY + 1; y >= nowY - 4; y--){ o += '<option value="' + y + '">' + (y + 543) + '\x3c/option>'; }
+    $('#rpYear').html(o).val(nowY);
+  }
+  api('getDepartments', APP.token).then(function(r){
+    var o = '<option value="">ทุกแผนก\x3c/option>';
+    (r.data || []).forEach(function(d){ o += '<option value="' + d.id + '">' + _esc(d.name) + '\x3c/option>'; });
+    $('#rpDept').html(o);
+  });
+};
+
+$(document).ready(function(){
+  $('#btnRunReport').on('click', runReport);
+  $('#btnExportCsv').on('click', exportCsv);
+  $('#btnPrintReport').on('click', printReport);
+});
+
+function reportFilters(){
+  return {
+    year: $('#rpYear').val(),
+    department_id: $('#rpDept').val(),
+    status: $('#rpStatus').val(),
+    groupBy: $('#rpGroup').val()
+  };
+}
+
+function runReport(){
+  var btn = $('#btnRunReport'); btn.prop('disabled', true);
+  api('reportData', APP.token, reportFilters()).then(function(r){
+    btn.prop('disabled', false);
+    if(r.status !== 'success'){ toast('error', r.message || 'โหลดไม่สำเร็จ'); return; }
+    REPORT.last = r;
+    $('#reportResult').removeClass('d-none');
+    $('#rpTotalCount').text(r.totals.count);
+    $('#rpTotalDays').text(r.totals.days);
+    $('#rpGroupCol').text(GROUP_LABEL[r.groupBy] || 'กลุ่ม');
+    $('#rpSummaryTitle').text('สรุปตาม' + (GROUP_LABEL[r.groupBy] || ''));
+
+    var sh = '';
+    if(!r.summary.length){ sh = '<tr><td colspan="3" class="text-center text-muted py-3">ไม่มีข้อมูล\x3c/td>\x3c/tr>'; }
+    r.summary.forEach(function(s){
+      sh += '<tr><td>' + _esc(s.key) + '\x3c/td><td class="text-center">' + s.count + '\x3c/td><td class="text-center"><b>' + s.days + '\x3c/b>\x3c/td>\x3c/tr>';
+    });
+    $('#rpSummary').html(sh);
+
+    var dh = '';
+    if(!r.detail.length){ dh = '<tr><td colspan="6" class="text-center text-muted py-3">ไม่มีข้อมูล\x3c/td>\x3c/tr>'; }
+    r.detail.forEach(function(d){
+      var range = fmtDateBE(d.start_date) + (d.start_date !== d.end_date ? ' - ' + fmtDateBE(d.end_date) : '');
+      dh += '<tr>'
+        + '<td><span class="badge badge-soft">' + _esc(d.request_no) + '\x3c/span>\x3c/td>'
+        + '<td>' + _esc(d.employee_name) + '\x3c/td>'
+        + '<td>' + _esc(d.leave_type_name) + '\x3c/td>'
+        + '<td>' + range + '\x3c/td>'
+        + '<td class="text-center">' + d.total_days + '\x3c/td>'
+        + '<td>' + _esc(d.status_th) + '\x3c/td>'
+        + '\x3c/tr>';
+    });
+    $('#rpDetail').html(dh);
+  }).catch(function(){ btn.prop('disabled', false); toast('error','เกิดข้อผิดพลาด'); });
+}
+
+function exportCsv(){
+  Swal.fire({ title:'กำลังสร้างไฟล์...', didOpen:function(){ Swal.showLoading(); }, allowOutsideClick:false });
+  api('exportLeaveCSV', APP.token, reportFilters()).then(function(r){
+    Swal.close();
+    if(r.status !== 'success'){ toast('error', r.message); return; }
+    var link = document.createElement('a');
+    link.href = 'data:' + r.mime + ';base64,' + r.base64;
+    link.download = r.filename;
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  });
+}
+
+function printReport(){
+  if(!REPORT.last){ toast('error','กดดูรายงานก่อน'); return; }
+  var r = REPORT.last;
+  var title = 'รายงานการลา ปี ' + (Number(r.year) + 543);
+  var rows = '';
+  r.detail.forEach(function(d){
+    var range = fmtDateBE(d.start_date) + (d.start_date !== d.end_date ? ' - ' + fmtDateBE(d.end_date) : '');
+    rows += '<tr><td>' + _esc(d.request_no) + '\x3c/td><td>' + _esc(d.employee_name) + '\x3c/td><td>' + _esc(d.department_name)
+      + '\x3c/td><td>' + _esc(d.leave_type_name) + '\x3c/td><td>' + range + '\x3c/td><td style="text-align:center">' + d.total_days
+      + '\x3c/td><td>' + _esc(d.status_th) + '\x3c/td>\x3c/tr>';
+  });
+  var sumRows = '';
+  r.summary.forEach(function(s){ sumRows += '<tr><td>' + _esc(s.key) + '\x3c/td><td style="text-align:center">' + s.count + '\x3c/td><td style="text-align:center">' + s.days + '\x3c/td>\x3c/tr>'; });
+
+  var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + title + '\x3c/title>'
+    + '<style>'
+    + 'body{font-family:"Prompt","TH Sarabun New",sans-serif;padding:24px;color:#1e293b}'
+    + 'h2{margin:0 0 4px}.sub{color:#64748b;margin:0 0 16px;font-size:13px}'
+    + 'table{width:100%;border-collapse:collapse;margin-bottom:18px;font-size:13px}'
+    + 'th,td{border:1px solid #cbd5e1;padding:6px 8px;text-align:left}'
+    + 'th{background:#eef0fb}'
+    + '.tot{margin:8px 0 16px;font-size:13px}'
+    + '@media print{button{display:none}}'
+    + '\x3c/style>\x3c/head><body>'
+    + '<h2>' + title + '\x3c/h2>'
+    + '<p class="sub">จัดกลุ่มตาม' + (GROUP_LABEL[r.groupBy] || '') + ' · พิมพ์เมื่อ ' + new Date().toLocaleDateString('th-TH') + '\x3c/p>'
+    + '<div class="tot"><b>รวม ' + r.totals.count + ' ใบ · ' + r.totals.days + ' วัน\x3c/b>\x3c/div>'
+    + '<h4>สรุปตาม' + (GROUP_LABEL[r.groupBy] || '') + '\x3c/h4>'
+    + '<table><thead><tr><th>' + (GROUP_LABEL[r.groupBy] || '') + '\x3c/th><th>จำนวนใบ\x3c/th><th>วันลา\x3c/th>\x3c/tr>\x3c/thead><tbody>' + sumRows + '\x3c/tbody>\x3c/table>'
+    + '<h4>รายละเอียด\x3c/h4>'
+    + '<table><thead><tr><th>เลขที่\x3c/th><th>พนักงาน\x3c/th><th>แผนก\x3c/th><th>ประเภท\x3c/th><th>ช่วงวัน\x3c/th><th>วัน\x3c/th><th>สถานะ\x3c/th>\x3c/tr>\x3c/thead><tbody>' + rows + '\x3c/tbody>\x3c/table>'
+    + '\x3c/body>\x3c/html>';
+
+  var w = window.open('', '_blank');
+  w.document.open(); w.document.write(html); w.document.close();
+  setTimeout(function(){ w.focus(); w.print(); }, 400);
+}
+</script>
