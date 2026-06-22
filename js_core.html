@@ -149,10 +149,14 @@ function doLogout(){
     confirmButtonColor: '#3b3f9e'
   }).then(function(res){
     if(res.isConfirmed){
-      api('logout', APP.token);
+      api('logout', APP.token).catch(function(){});
       localStorage.removeItem(TOKEN_KEY);
       sessionStorage.removeItem(TOKEN_KEY);
-      location.reload();
+      APP.token = null; APP.user = null;
+      $('#view-app').addClass('d-none');
+      $('#view-login').removeClass('d-none');
+      $('#username').val(''); $('#pw').val('');
+      $('#pw').attr('type', 'password');
     }
   });
 }
