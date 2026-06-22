@@ -618,7 +618,7 @@
 
           <!-- Tab content -->
           <div class="panel">
-            <div class="panel-b" style="max-width:680px">
+            <div class="panel-b" style="max-width:720px">
 
               <!-- ตั้งค่าครั้งแรก -->
               <div class="help-pane" id="htab-setup">
@@ -650,11 +650,25 @@
                   </ul>
                 </div></div>
                 <div class="help-step"><span class="help-num">4</span><div>
-                  <b>เพิ่มพนักงาน &amp; กำหนดบทบาท</b>
+                  <b>สร้างบัญชีผู้ใช้ &amp; กำหนดแผนก</b>
                   <ul class="mt-1 mb-0 small text-muted">
-                    <li>ไปที่ <b>พนักงาน</b> → เพิ่มข้อมูลพนักงานแต่ละคน กำหนด Role</li>
-                    <li>พนักงานเปิด LINE → กด Rich Menu → กรอกรหัสพนักงาน + เบอร์โทร</li>
-                    <li>ระบบจะผูก LINE userId อัตโนมัติ</li>
+                    <li>เมนู <b>จัดการผู้ใช้</b> (admin only) → เพิ่มบัญชีสำหรับ HR และหัวหน้างาน กำหนด role</li>
+                    <li>เมนู <b>ข้อมูลหลัก</b> → แท็บ <b>แผนก</b> → เลือก <b>หัวหน้าแผนก</b> ได้หลายคน (Ctrl+คลิก)</li>
+                    <li>หัวหน้าแผนกต้องเป็นผู้ใช้ที่มี role = <b>supervisor</b> เท่านั้น</li>
+                  </ul>
+                </div></div>
+                <div class="help-step"><span class="help-num">5</span><div>
+                  <b>เพิ่มพนักงาน &amp; ผูก LINE</b>
+                  <ul class="mt-1 mb-0 small text-muted">
+                    <li>เมนู <b>พนักงาน</b> → <b>+ เพิ่มพนักงาน</b> ทีละคน หรือ <b>Import CSV</b> สำหรับหลายคนพร้อมกัน</li>
+                    <li>พนักงานเปิด LINE → กด Rich Menu → กรอกรหัสพนักงาน + เบอร์โทร → ระบบผูก LINE userId อัตโนมัติ</li>
+                  </ul>
+                </div></div>
+                <div class="help-step"><span class="help-num">6</span><div>
+                  <b>เปิดแจ้งเตือนอัตโนมัติ (ทำครั้งเดียว)</b>
+                  <ul class="mt-1 mb-0 small text-muted">
+                    <li>เปิด <b>Apps Script Editor</b> → เลือก Run → <code>setupRemindTrigger()</code></li>
+                    <li>ระบบจะแจ้งเตือนทาง LINE ทุก 09:00 น. เมื่อมีใบลาค้างอนุมัติเกิน 2 วัน</li>
                   </ul>
                 </div></div>
               </div>
@@ -666,38 +680,65 @@
                 </div>
                 <div class="help-step"><span class="help-num">1</span><div>
                   <b>พนักงานยื่นใบลา</b>
-                  <p class="small text-muted mb-0 mt-1">ผ่าน LINE LIFF → กด ยื่นใบลา</p>
+                  <p class="small text-muted mb-0 mt-1">ผ่าน LINE LIFF → แท็บ <b>ยื่นลา</b> → กรอกข้อมูลและกด <b>ยื่นใบลา</b></p>
                 </div></div>
                 <div class="help-step"><span class="help-num">2</span><div>
-                  <b>ผู้อนุมัติได้รับ LINE Flex Message</b>
-                  <p class="small text-muted mb-0 mt-1">มีปุ่ม <b style="color:#3b3f9e">อนุมัติ</b> และ <b style="color:#dc3545">ไม่อนุมัติ</b> กดได้เลยในแชท LINE</p>
+                  <b>หัวหน้าแผนกได้รับ LINE Flex Message</b>
+                  <ul class="mt-1 mb-0 small text-muted">
+                    <li>มีปุ่ม <b style="color:#3b3f9e">อนุมัติ</b> และ <b style="color:#dc3545">ไม่อนุมัติ</b> กดได้เลยในแชท LINE</li>
+                    <li>หากแผนกมีหัวหน้าหลายคน ทุกคนจะได้รับ Flex Message พร้อมกัน</li>
+                  </ul>
                 </div></div>
                 <div class="help-step"><span class="help-num">3</span><div>
                   <b>ระบบตอบกลับและแจ้งพนักงาน</b>
-                  <p class="small text-muted mb-0 mt-1">ผลอนุมัติส่งกลับใน LINE แชท และ push แจ้งพนักงานทันที</p>
+                  <p class="small text-muted mb-0 mt-1">ผลอนุมัติส่งกลับใน LINE แชท และ push แจ้งพนักงานทันที หากตั้ง 2 ระดับ → HR ได้รับ Flex Message ต่ออีกรอบ</p>
+                </div></div>
+                <div class="help-step"><span class="help-num">4</span><div>
+                  <b>แจ้งเตือนใบลาค้างอนุมัติ</b>
+                  <p class="small text-muted mb-0 mt-1">ระบบ push แจ้งเตือนอัตโนมัติทุก 09:00 น. เมื่อมีใบลาค้างเกิน 2 วัน (ต้องรัน <code>setupRemindTrigger()</code> ก่อน)</p>
                 </div></div>
                 <div class="alert alert-warning py-2 mt-3 mb-0 small">
-                  <b>ข้อกำหนด:</b> ผู้อนุมัติต้องเป็น Friend กับ LINE OA และต้องมี LINE userId บันทึกในระบบ (ผูกบัญชีก่อน)
+                  <b>ข้อกำหนด:</b> ผู้อนุมัติต้องเป็น Friend กับ LINE OA และต้องผูก LINE userId ในระบบก่อน
                 </div>
               </div>
 
               <!-- HR Admin -->
               <div class="help-pane d-none" id="htab-admin">
                 <div class="help-step"><span class="help-num">◆</span><div>
+                  <b>ปฏิทินการลารายเดือน</b>
+                  <p class="small text-muted mb-0 mt-1">เมนู <b>ปฏิทินการลา</b> → ดูภาพรวมการลาแบบ grid รายเดือน เลื่อนไปหน้า/ย้อนหลังได้ — เห็นชื่อผู้ลาในแต่ละวันและวันหยุด</p>
+                </div></div>
+                <div class="help-step"><span class="help-num">◆</span><div>
+                  <b>จัดการบัญชีผู้ใช้ระบบ</b>
+                  <p class="small text-muted mb-0 mt-1">เมนู <b>จัดการผู้ใช้</b> (admin only) → เพิ่ม/แก้ไข/ลบ บัญชี admin, hr, supervisor พร้อมกำหนดอีเมลและสถานะ</p>
+                </div></div>
+                <div class="help-step"><span class="help-num">◆</span><div>
+                  <b>เปลี่ยนรหัสผ่าน</b>
+                  <p class="small text-muted mb-0 mt-1">คลิกชื่อผู้ใช้มุมบนขวา → <b>เปลี่ยนรหัสผ่าน</b> → กรอกรหัสผ่านปัจจุบันและรหัสใหม่ (อย่างน้อย 6 ตัวอักษร)</p>
+                </div></div>
+                <div class="help-step"><span class="help-num">◆</span><div>
+                  <b>นำเข้าพนักงานจาก CSV</b>
+                  <ul class="mt-1 mb-0 small text-muted">
+                    <li>เมนู <b>พนักงาน</b> → กด <b>Import CSV</b> → เลือกไฟล์ → ระบบแสดง preview → กด <b>นำเข้าเลย</b></li>
+                    <li>คอลัมน์บังคับ: <code>ชื่อ</code>, <code>นามสกุล</code> — คอลัมน์อื่นเป็นตัวเลือก</li>
+                    <li>ชื่อแผนกต้องตรงกับที่มีในระบบ เพื่อให้ผูก department ได้ถูกต้อง</li>
+                  </ul>
+                </div></div>
+                <div class="help-step"><span class="help-num">◆</span><div>
+                  <b>กำหนดหัวหน้าแผนกหลายคน</b>
+                  <p class="small text-muted mb-0 mt-1">เมนู <b>ข้อมูลหลัก</b> → <b>แผนก</b> → แก้ไข → กด <b>Ctrl + คลิก</b> เพื่อเลือกหัวหน้าได้หลายคน ทุกคนจะรับ Flex Message อนุมัติพร้อมกัน</p>
+                </div></div>
+                <div class="help-step"><span class="help-num">◆</span><div>
                   <b>สร้างใบลาแทนพนักงาน</b>
                   <p class="small text-muted mb-0 mt-1">เมนู <b>ใบลา</b> → <b>+ สร้างใบลา</b> → เลือกพนักงาน ระบบคำนวณวันและหักยอดอัตโนมัติ</p>
                 </div></div>
                 <div class="help-step"><span class="help-num">◆</span><div>
-                  <b>จัดการประเภทการลา</b>
-                  <p class="small text-muted mb-0 mt-1">เมนู <b>ข้อมูลหลัก</b> → แท็บ <b>ประเภทการลา</b> — กำหนดโควตา, สี, ต้องแนบเอกสาร, ลาครึ่งวัน, โควตาตามอายุงาน</p>
+                  <b>อนุมัติหลายรายการพร้อมกัน (Bulk)</b>
+                  <p class="small text-muted mb-0 mt-1">เมนู <b>คิวอนุมัติ</b> → ติ๊ก checkbox → กด <b>อนุมัติทั้งหมด</b> หรือ <b>ไม่อนุมัติทั้งหมด</b></p>
                 </div></div>
                 <div class="help-step"><span class="help-num">◆</span><div>
                   <b>ยกยอดวันลาข้ามปี</b>
                   <p class="small text-muted mb-0 mt-1">เมนู <b>ตั้งค่า</b> → กด <b>ยกยอดวันลาปีที่แล้ว</b> ทำต้นปีใหม่ ระบบนำวันคงเหลือไปบวกปีถัดไปอัตโนมัติ</p>
-                </div></div>
-                <div class="help-step"><span class="help-num">◆</span><div>
-                  <b>อนุมัติหลายรายการพร้อมกัน (Bulk)</b>
-                  <p class="small text-muted mb-0 mt-1">เมนู <b>คิวอนุมัติ</b> → ติ๊ก checkbox → กด <b>อนุมัติทั้งหมด</b> หรือ <b>ไม่อนุมัติทั้งหมด</b></p>
                 </div></div>
               </div>
 
@@ -706,7 +747,7 @@
                 <div class="help-step"><span class="help-num">◆</span><div>
                   <b>อนุมัติผ่าน LINE (แนะนำ)</b>
                   <ul class="mt-1 mb-0 small text-muted">
-                    <li>รับ Flex Message ใน LINE เมื่อมีใบลาใหม่</li>
+                    <li>รับ Flex Message ใน LINE เมื่อมีใบลาใหม่ในแผนกที่ตนดูแล</li>
                     <li>กดปุ่ม <b style="color:#3b3f9e">อนุมัติ</b> หรือ <b style="color:#dc3545">ไม่อนุมัติ</b> ในแชทได้เลย</li>
                     <li>ระบบตอบกลับผลทันที ไม่ต้องเปิดหน้าเว็บ</li>
                   </ul>
@@ -715,6 +756,13 @@
                   <b>อนุมัติผ่านหน้าเว็บ</b>
                   <p class="small text-muted mb-0 mt-1">เมนู <b>คิวอนุมัติ</b> → กด <b>อนุมัติ</b> หรือ <b>ปฏิเสธ</b> → ใส่ความเห็น → ยืนยัน ระบบแจ้งพนักงานทาง LINE</p>
                 </div></div>
+                <div class="help-step"><span class="help-num">◆</span><div>
+                  <b>ปฏิทินการลา (เฉพาะแผนกตนเอง)</b>
+                  <p class="small text-muted mb-0 mt-1">เมนู <b>ปฏิทินการลา</b> → เห็นเฉพาะการลาของพนักงานในแผนกที่ตนเป็นหัวหน้า</p>
+                </div></div>
+                <div class="alert alert-info py-2 mt-3 mb-0 small">
+                  <b>หมายเหตุ:</b> Supervisor เห็นข้อมูลเฉพาะแผนกของตนเองเท่านั้น — Dashboard, คิวอนุมัติ, ใบลา และปฏิทิน ล้วนกรองอัตโนมัติ
+                </div>
               </div>
 
               <!-- พนักงาน -->
@@ -729,26 +777,44 @@
                 </div></div>
                 <div class="help-step"><span class="help-num">2</span><div>
                   <b>ยื่นใบลา</b>
-                  <p class="small text-muted mb-0 mt-1">แท็บ <b>ยื่นลา</b> → เลือกประเภท → เลือกวัน → เหตุผล → แนบเอกสาร → กด <b>ยื่นใบลา</b></p>
+                  <p class="small text-muted mb-0 mt-1">แท็บ <b>ยื่นลา</b> → เลือกประเภท → เลือกวัน → ใส่เหตุผล → แนบเอกสาร (ถ้าต้องการ) → กด <b>ยื่นใบลา</b></p>
                 </div></div>
                 <div class="help-step"><span class="help-num">3</span><div>
-                  <b>ดูประวัติ / ยกเลิก</b>
-                  <p class="small text-muted mb-0 mt-1">แท็บ <b>ประวัติ</b> → กรองด้วย chip สถานะ → กดที่ card เพื่อดูรายละเอียด → ยกเลิกได้หากยังรออนุมัติ</p>
+                  <b>ดูประวัติ &amp; ยกเลิกใบลา</b>
+                  <ul class="mt-1 mb-0 small text-muted">
+                    <li>แท็บ <b>ประวัติ</b> → กรองด้วย chip สถานะ → กดที่ card เพื่อดูรายละเอียด</li>
+                    <li>กดปุ่ม <b style="color:#ef4444">ยกเลิกใบลา</b> หากยังรออนุมัติ → ระบุ <b>เหตุผลการยกเลิก</b> ได้</li>
+                  </ul>
                 </div></div>
                 <div class="help-step"><span class="help-num">4</span><div>
-                  <b>วันคงเหลือ &amp; วันหยุด</b>
-                  <p class="small text-muted mb-0 mt-1">แท็บ <b>คงเหลือ</b> → ดูโควตาแต่ละประเภทพร้อม progress bar · แท็บ <b>วันหยุด</b> → รายการวันหยุดปีนี้</p>
+                  <b>วันลาคงเหลือ</b>
+                  <p class="small text-muted mb-0 mt-1">แท็บ <b>คงเหลือ</b> → ดูโควตาแต่ละประเภทพร้อม progress bar แสดง % ที่ใช้ไป</p>
+                </div></div>
+                <div class="help-step"><span class="help-num">5</span><div>
+                  <b>สถิติรายบุคคล</b>
+                  <p class="small text-muted mb-0 mt-1">แท็บ <b>สถิติ</b> → ดูสรุปวันลาทั้งหมดแยกตามประเภท พร้อม % และจำนวนครั้ง — เลือกดูย้อนหลังตามปีได้</p>
+                </div></div>
+                <div class="help-step"><span class="help-num">6</span><div>
+                  <b>ปฏิทินวันหยุด</b>
+                  <p class="small text-muted mb-0 mt-1">แท็บ <b>วันหยุด</b> → รายการวันหยุดราชการและวันหยุดบริษัทในปีปัจจุบัน</p>
                 </div></div>
               </div>
 
               <!-- สถานะ -->
               <div class="help-pane d-none" id="htab-status">
                 <div class="d-flex flex-column gap-3">
-                  <div class="d-flex align-items-start gap-3"><span class="badge text-bg-warning mt-1" style="min-width:80px;text-align:center">รออนุมัติ</span><span class="small text-muted">ยื่นใบลาแล้ว รอผู้อนุมัติระดับ 1 ดำเนินการ</span></div>
-                  <div class="d-flex align-items-start gap-3"><span class="badge text-bg-info mt-1" style="min-width:80px;text-align:center">ผ่านระดับ 1</span><span class="small text-muted">ผ่านระดับ 1 แล้ว รอผู้อนุมัติระดับ 2 (กรณีตั้งค่า 2 ระดับ)</span></div>
-                  <div class="d-flex align-items-start gap-3"><span class="badge text-bg-success mt-1" style="min-width:80px;text-align:center">อนุมัติ</span><span class="small text-muted">ผ่านการอนุมัติทุกระดับแล้ว วันลาถูกหักยอดแล้ว</span></div>
-                  <div class="d-flex align-items-start gap-3"><span class="badge text-bg-danger mt-1" style="min-width:80px;text-align:center">ไม่อนุมัติ</span><span class="small text-muted">ถูกปฏิเสธ ระบบคืนยอดวันลากลับอัตโนมัติ</span></div>
-                  <div class="d-flex align-items-start gap-3"><span class="badge text-bg-secondary mt-1" style="min-width:80px;text-align:center">ยกเลิก</span><span class="small text-muted">พนักงานยกเลิกเอง ระบบคืนยอดวันลากลับอัตโนมัติ</span></div>
+                  <div class="d-flex align-items-start gap-3"><span class="badge text-bg-warning mt-1" style="min-width:88px;text-align:center">รออนุมัติ</span><span class="small text-muted">ยื่นใบลาแล้ว รอผู้อนุมัติระดับ 1 (หัวหน้าแผนก) ดำเนินการ</span></div>
+                  <div class="d-flex align-items-start gap-3"><span class="badge text-bg-info mt-1" style="min-width:88px;text-align:center">ผ่านระดับ 1</span><span class="small text-muted">ผ่านหัวหน้าแล้ว รอ HR อนุมัติขั้นสุดท้าย (กรณีตั้งค่า 2 ระดับ)</span></div>
+                  <div class="d-flex align-items-start gap-3"><span class="badge text-bg-success mt-1" style="min-width:88px;text-align:center">อนุมัติ</span><span class="small text-muted">ผ่านการอนุมัติทุกระดับแล้ว วันลาถูกหักยอดเรียบร้อย</span></div>
+                  <div class="d-flex align-items-start gap-3"><span class="badge text-bg-danger mt-1" style="min-width:88px;text-align:center">ไม่อนุมัติ</span><span class="small text-muted">ถูกปฏิเสธ ระบบคืนยอดวันลากลับอัตโนมัติ</span></div>
+                  <div class="d-flex align-items-start gap-3"><span class="badge text-bg-secondary mt-1" style="min-width:88px;text-align:center">ยกเลิก</span><span class="small text-muted">พนักงานยกเลิกเอง (พร้อมเหตุผล) ระบบคืนยอดวันลากลับอัตโนมัติ</span></div>
+                </div>
+                <hr class="my-3">
+                <p class="small text-muted mb-2"><b>การหักยอดวันลา:</b></p>
+                <div class="d-flex flex-column gap-2 small text-muted">
+                  <div>📌 <b>ตอนยื่น</b> → หัก <i>pending</i> ทันที (วันคงเหลือลดลง)</div>
+                  <div>✅ <b>ตอนอนุมัติสุดท้าย</b> → ย้าย pending → used</div>
+                  <div>↩️ <b>ตอนปฏิเสธหรือยกเลิก</b> → คืน pending กลับอัตโนมัติ</div>
                 </div>
               </div>
 
