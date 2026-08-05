@@ -198,7 +198,7 @@
           <div class="col-6"><label class="form-label">เวลาเริ่ม</label><input type="time" class="form-control" id="nlStartTime"></div>
           <div class="col-6"><label class="form-label">เวลาสิ้นสุด</label><input type="time" class="form-control" id="nlEndTime"></div>
         </div>
-        <div class="day-pill my-2"><span class="small text-muted">จำนวนวันลา</span><b id="nlDays">-</b></div>
+        <div class="day-pill my-2"><span class="small text-muted" id="nlDaysLabel">จำนวนวันลา</span><b id="nlDays">-</b></div>
         <div class="small text-danger mb-2" id="nlDaysHint"></div>
         <label class="form-label">เหตุผล</label>
         <textarea class="form-control mb-2" id="nlReason" rows="2"></textarea>
@@ -462,6 +462,7 @@
 
     var isHourly = mode === 'hourly';
     $('#nlTimeRow').toggleClass('hidden', !isHourly);
+    $('#nlDaysLabel').text(isHourly ? 'จำนวนชั่วโมงลา' : 'จำนวนวันลา');
 
     if(!start){ $('#nlDays').text('-'); $('#nlDaysHint').text('กรุณาเลือกวันที่เริ่มลา'); return; }
     if(!end){ $('#nlDays').text('-'); $('#nlDaysHint').text(''); return; }
@@ -471,11 +472,15 @@
     if(isHourly){
       var st = $('#nlStartTime').val(), et = $('#nlEndTime').val();
       if(!st || !et){ $('#nlDays').text('-'); $('#nlDaysHint').text('กรุณาระบุเวลาเริ่มและเวลาสิ้นสุด'); return; }
+      var toMin = function(t){ var p = t.split(':'); return (+p[0]) * 60 + (+p[1]); };
+      var mins = toMin(et) - toMin(st);
+      if(mins <= 0){ $('#nlDays').text('-'); $('#nlDaysHint').text('เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม'); return; }
+      var hrs = Math.round((mins / 60) * 100) / 100;
       $('#nlDaysHint').text('');
       $('#nlDays').html(spinner);
       api('liffPreviewDays', start, end, 'hourly', 'hourly', st, et).then(function(r){
-        if(r.days <= 0){ $('#nlDays').text('-'); $('#nlDaysHint').text('เวลาที่เลือกไม่อยู่ในวันทำงาน หรือเวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม'); }
-        else { $('#nlDays').text(r.days); $('#nlDaysHint').text(''); }
+        if(r.days > 0){ $('#nlDays').text(hrs + ' ชั่วโมง'); $('#nlDaysHint').text(''); }
+        else { $('#nlDays').text('-'); $('#nlDaysHint').text('วันที่เลือกไม่ใช่วันทำงาน (วันหยุด/สุดสัปดาห์)'); }
       });
       return;
     }
@@ -532,7 +537,7 @@
         Swal.fire({ icon:'success', title:'ยื่นใบลาแล้ว', text:r.request_no, timer:1800, showConfirmButton:false });
         $('#nlReason').val(''); $('#nlContact').val(''); $('#nlAttachId').val(''); $('#nlAttach').val('');
         $('#nlAttachStatus').html(''); $('#uploadBar').hide(); $('#nlDays').text('-'); $('#nlDaysHint').text('');
-        $('#nlStartTime').val(''); $('#nlEndTime').val(''); $('#nlTimeRow').addClass('hidden');
+        $('#nlStartTime').val(''); $('#nlEndTime').val(''); $('#nlTimeRow').addClass('hidden'); $('#nlDaysLabel').text('จำนวนวันลา');
         loadBalanceMap(onTypeChange);
       } else { toast('error', r.message); }
     }).catch(function(){ setBtnLoading('#btnSubmitLeave', false); toast('error','ส่งใบลาไม่สำเร็จ'); });
