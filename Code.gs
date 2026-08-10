@@ -34,11 +34,11 @@ const CONFIG = {
     },
     hr: {
       name: 'ฝ่ายบุคคล (HR)',
-      permissions: ['dashboard', 'approval', 'leave', 'calendar', 'employee', 'master', 'report', 'help']
+      permissions: ['dashboard', 'approval', 'leave', 'calendar', 'employee', 'master', 'report']
     },
     supervisor: {
       name: 'หัวหน้างาน',
-      permissions: ['dashboard', 'approval', 'leave', 'calendar', 'help']
+      permissions: ['dashboard', 'approval', 'leave', 'calendar']
     }
   },
 
@@ -2767,7 +2767,7 @@ function reportData(token, filters) {
 
   var detail = rows.map(function (d) {
     return {
-      request_no: d.request_no, employee_name: d.employee_name,
+      id: d.id, request_no: d.request_no, employee_name: d.employee_name,
       department_name: depts[d.department_id] || '', leave_type_name: d.leave_type_name,
       start_date: d.start_date, end_date: d.end_date, total_days: d.total_days,
       status: d.status, status_th: _ST_TH[d.status] || d.status, reason: d.reason || ''
@@ -2795,6 +2795,30 @@ function reportData(token, filters) {
     summary: summary, detail: detail,
     totals: { count: rows.length, days: totalDays }
   };
+}
+
+/** ลบใบลา 1 รายการถาวร (เฉพาะผู้ดูแลระบบ) — ใช้ล้างข้อมูลทดสอบออกจากรายงาน/สถิติ */
+function deleteLeaveRequest(token, id) {
+  var user = _auth(token);
+  if (user.role !== 'admin') return { status: 'error', message: 'เฉพาะผู้ดูแลระบบเท่านั้นที่ลบข้อมูลได้' };
+  var rows = _readAll('LeaveRequests');
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i].data.id === id) { _delete('LeaveRequests', rows[i].rowIndex); return { status: 'success', message: 'ลบข้อมูลแล้ว' }; }
+  }
+  return { status: 'error', message: 'ไม่พบรายการ' };
+}
+
+/** ลบใบลาหลายรายการพร้อมกันถาวร (เฉพาะผู้ดูแลระบบ) */
+function bulkDeleteLeaveRequests(token, ids) {
+  var user = _auth(token);
+  if (user.role !== 'admin') return { status: 'error', message: 'เฉพาะผู้ดูแลระบบเท่านั้นที่ลบข้อมูลได้' };
+  ids = ids || [];
+  var idSet = {};
+  ids.forEach(function (id) { idSet[id] = true; });
+  var rows = _readAll('LeaveRequests').filter(function (r) { return idSet[r.data.id]; });
+  rows.sort(function (a, b) { return b.rowIndex - a.rowIndex; });
+  rows.forEach(function (r) { _delete('LeaveRequests', r.rowIndex); });
+  return { status: 'success', message: 'ลบแล้ว ' + rows.length + ' รายการ' };
 }
 
 function _csvCell(v) {

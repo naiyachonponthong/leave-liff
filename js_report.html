@@ -23,7 +23,40 @@ $(document).ready(function(){
   $('#btnRunReport').on('click', runReport);
   $('#btnExportCsv').on('click', exportCsv);
   $('#btnPrintReport').on('click', printReport);
+  $('#rpChkAll').on('change', function(){
+    $('.rp-chk').prop('checked', $(this).prop('checked'));
+    updateSelCount();
+  });
+  $('#rpDetail').on('change', '.rp-chk', updateSelCount);
+  $('#btnDeleteSelectedLeaves').on('click', deleteSelectedLeaves);
 });
+
+function updateSelCount(){
+  var n = $('.rp-chk:checked').length;
+  $('#rpSelCount').text(n);
+  $('#btnDeleteSelectedLeaves').prop('disabled', n === 0);
+}
+
+function deleteSelectedLeaves(){
+  var ids = $('.rp-chk:checked').map(function(){ return $(this).data('id'); }).get();
+  if(!ids.length) return;
+  Swal.fire({
+    title: 'ลบใบลาที่เลือก?',
+    text: 'ลบแล้ว ' + ids.length + ' รายการจะกู้คืนไม่ได้ และจะหักออกจากรายงาน/สถิติทันที',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'ลบเลย',
+    cancelButtonText: 'ยกเลิก',
+    confirmButtonColor: '#dc3545'
+  }).then(function(res){
+    if(!res.isConfirmed) return;
+    api('bulkDeleteLeaveRequests', APP.token, ids).then(function(r){
+      toast('success', r.message || 'ลบแล้ว');
+      $('#rpChkAll').prop('checked', false);
+      runReport();
+    }).catch(function(){ toast('error','ลบไม่สำเร็จ'); });
+  });
+}
 
 function reportFilters(){
   return {
@@ -53,11 +86,17 @@ function runReport(){
     });
     $('#rpSummary').html(sh);
 
+    var isAdmin = APP.user && APP.user.role === 'admin';
+    $('#rpChkCol').toggleClass('d-none', !isAdmin);
+    $('#btnDeleteSelectedLeaves').toggleClass('d-none', !isAdmin);
+
+    var colspan = isAdmin ? 7 : 6;
     var dh = '';
-    if(!r.detail.length){ dh = '<tr><td colspan="6" class="text-center text-muted py-3">ไม่มีข้อมูล\x3c/td>\x3c/tr>'; }
+    if(!r.detail.length){ dh = '<tr><td colspan="' + colspan + '" class="text-center text-muted py-3">ไม่มีข้อมูล\x3c/td>\x3c/tr>'; }
     r.detail.forEach(function(d){
       var range = fmtDateBE(d.start_date) + (d.start_date !== d.end_date ? ' - ' + fmtDateBE(d.end_date) : '');
       dh += '<tr>'
+        + (isAdmin ? '<td><input type="checkbox" class="form-check-input rp-chk" data-id="' + _esc(d.id) + '"></td>' : '')
         + '<td><span class="badge badge-soft">' + _esc(d.request_no) + '\x3c/span>\x3c/td>'
         + '<td>' + _esc(d.employee_name) + '\x3c/td>'
         + '<td>' + _esc(d.leave_type_name) + '\x3c/td>'
@@ -67,6 +106,8 @@ function runReport(){
         + '\x3c/tr>';
     });
     $('#rpDetail').html(dh);
+    $('#rpChkAll').prop('checked', false);
+    updateSelCount();
   }).catch(function(){ btn.prop('disabled', false); toast('error','เกิดข้อผิดพลาด'); });
 }
 

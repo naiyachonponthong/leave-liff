@@ -148,7 +148,7 @@ function applyPermissions(){
   var perms = APP.user.permissions || [];
   $('.nav-link[data-page]').each(function(){
     var pg = $(this).data('page');
-    if(pg === 'dashboard' || pg === 'help'){ return; }
+    if(pg === 'dashboard'){ return; }
     if(perms.indexOf(pg) === -1){ $(this).closest('li').addClass('d-none'); }
     else { $(this).closest('li').removeClass('d-none'); }
   });
