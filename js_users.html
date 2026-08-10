@@ -10,6 +10,7 @@ var ROLE_COLORS = { admin: 'text-bg-danger', hr: 'text-bg-primary', supervisor: 
 $(document).ready(function(){
   $('#btnAddUser').on('click', function(){ openUser(null); });
   $('#btnSaveUser').on('click', saveUser);
+  $('#btnReloadAudit').on('click', loadAudit);
   $('#btnToggleUsrPw').on('click', function(){
     var inp = $('#usrPassword');
     var isText = inp.attr('type') === 'text';
@@ -18,7 +19,39 @@ $(document).ready(function(){
   });
 });
 
-window.PAGE_HOOKS.users = loadUsers;
+window.PAGE_HOOKS.users = function(){ loadUsers(); loadAudit(); };
+
+var AUDIT_LABELS = {
+  LOGIN: 'เข้าสู่ระบบ', APPROVE_LEAVE: 'อนุมัติใบลา', REJECT_LEAVE: 'ไม่อนุมัติใบลา',
+  CANCEL_LEAVE: 'ยกเลิกใบลา', DELETE_LEAVE: 'ลบใบลา', EDIT_LEAVE: 'แก้ไขใบลา',
+  SAVE_USER: 'บันทึกผู้ใช้', DELETE_USER: 'ลบผู้ใช้', SAVE_CONFIG: 'แก้ไขตั้งค่าระบบ'
+};
+var AUDIT_COLORS = {
+  DELETE_LEAVE: 'text-bg-danger', DELETE_USER: 'text-bg-danger', REJECT_LEAVE: 'text-bg-warning',
+  APPROVE_LEAVE: 'text-bg-success', LOGIN: 'text-bg-light border text-muted'
+};
+
+function loadAudit(){
+  tblSkel('#tblAudit', 5);
+  api('getAuditLog', APP.token, 200).then(function(r){
+    if(r.status !== 'success'){ $('#tblAudit').html('<tr><td colspan="5" class="text-center text-muted py-4">' + _esc(r.message || 'โหลดไม่สำเร็จ') + '\x3c/td>\x3c/tr>'); return; }
+    var rows = r.data || [];
+    if(!rows.length){ $('#tblAudit').html('<tr><td colspan="5" class="text-center text-muted py-4">ยังไม่มีประวัติ\x3c/td>\x3c/tr>'); return; }
+    var html = '';
+    rows.forEach(function(a){
+      var t = new Date(a.timestamp);
+      var when = isNaN(t) ? _esc(a.timestamp) : t.toLocaleString('th-TH', { dateStyle:'short', timeStyle:'short' });
+      html += '<tr>'
+        + '<td class="text-muted small text-nowrap">' + when + '\x3c/td>'
+        + '<td>' + _esc(a.actor_name || '-') + '\x3c/td>'
+        + '<td><span class="badge ' + (AUDIT_COLORS[a.action] || 'text-bg-secondary') + '">' + _esc(AUDIT_LABELS[a.action] || a.action) + '\x3c/span>\x3c/td>'
+        + '<td>' + _esc(a.target || '-') + '\x3c/td>'
+        + '<td class="text-muted small">' + _esc(a.detail || '') + '\x3c/td>'
+        + '\x3c/tr>';
+    });
+    $('#tblAudit').html(html);
+  });
+}
 
 function _findUser(id){ return USR.list.filter(function(x){ return x.id === id; })[0]; }
 
@@ -42,8 +75,17 @@ function renderUsers(){
       var activeBadge = u.active !== false
         ? '<span class="badge text-bg-success">ใช้งาน\x3c/span>'
         : '<span class="badge text-bg-secondary">ปิดใช้\x3c/span>';
+      var deleTag = '';
+      if(u.delegate_user_id){
+        var dele = _findUser(u.delegate_user_id);
+        var period = (u.delegate_from || u.delegate_to)
+          ? ' ' + (u.delegate_from ? fmtDateBE(u.delegate_from) : '') + '–' + (u.delegate_to ? fmtDateBE(u.delegate_to) : '')
+          : '';
+        deleTag = '<br><span class="badge text-bg-info mt-1" title="มอบหมายให้อนุมัติแทน">'
+          + '<i class="fi fi-rr-user-add">\x3c/i> แทนโดย ' + _esc(dele ? (dele.name || dele.username) : '?') + _esc(period) + '\x3c/span>';
+      }
       html += '<tr>'
-        + '<td><b>' + _esc(u.name || '-') + '\x3c/b>' + (isSelf ? ' <span class="badge text-bg-light border text-muted ms-1">คุณ\x3c/span>' : '') + '\x3c/td>'
+        + '<td><b>' + _esc(u.name || '-') + '\x3c/b>' + (isSelf ? ' <span class="badge text-bg-light border text-muted ms-1">คุณ\x3c/span>' : '') + deleTag + '\x3c/td>'
         + '<td><code>' + _esc(u.username) + '\x3c/code>\x3c/td>'
         + '<td>' + roleBadge + '\x3c/td>'
         + '<td class="text-muted">' + _esc(u.email || '-') + '\x3c/td>'
@@ -64,6 +106,19 @@ function renderUsers(){
 function openUser(u){
   var isEdit = !!u;
   $('#userModalTitle').text(isEdit ? 'แก้ไขผู้ใช้' : 'เพิ่มผู้ใช้');
+
+  // ตัวเลือกผู้อนุมัติแทน — ทุกบัญชีที่ใช้งานอยู่ ยกเว้นตัวเอง (มอบหมายให้ตัวเองไม่มีความหมาย)
+  var opts = '<option value="">— ไม่มอบหมาย —\x3c/option>';
+  USR.list.forEach(function(x){
+    if(x.active === false) return;
+    if(isEdit && x.id === u.id) return;
+    opts += '<option value="' + _esc(x.id) + '">' + _esc(x.name || x.username)
+          + ' (' + _esc(ROLE_LABELS[x.role] || x.role) + ')\x3c/option>';
+  });
+  $('#usrDelegate').html(opts).val(isEdit ? (u.delegate_user_id || '') : '');
+  $('#usrDelegateFrom').val(isEdit ? (u.delegate_from || '') : '');
+  $('#usrDelegateTo').val(isEdit ? (u.delegate_to || '') : '');
+
   $('#usrId').val(isEdit ? u.id : '');
   $('#usrName').val(isEdit ? (u.name || '') : '');
   $('#usrUsername').val(isEdit ? (u.username || '') : '');
@@ -90,7 +145,15 @@ function saveUser(){
   if(!username){ toast('error','กรุณาระบุชื่อผู้ใช้'); return; }
   if(!id && !password){ toast('error','กรุณาระบุรหัสผ่าน'); return; }
 
-  var payload = { id: id, name: name, username: username, role: role, email: email, active: active };
+  var delegateFrom = $('#usrDelegateFrom').val();
+  var delegateTo = $('#usrDelegateTo').val();
+  if(delegateFrom && delegateTo && delegateTo < delegateFrom){ toast('error','วันสิ้นสุดการมอบหมายต้องไม่ก่อนวันเริ่ม'); return; }
+
+  var payload = {
+    id: id, name: name, username: username, role: role, email: email, active: active,
+    delegate_user_id: $('#usrDelegate').val() || '',
+    delegate_from: delegateFrom, delegate_to: delegateTo
+  };
   if(password) payload.password = password;
 
   setBtnLoading('#btnSaveUser', true);

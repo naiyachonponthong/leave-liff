@@ -65,7 +65,8 @@ const SHEETS = {
   Holidays:      'holiday_json',
   Sessions:      'session_json',
   Errors:        'error_json',
-  Notifications: 'notification_json'
+  Notifications: 'notification_json',
+  AuditLog:      'audit_json'
 };
 
 // ============================================================
@@ -107,6 +108,22 @@ function _sheet(name) {
   return sh;
 }
 
+/**
+ * คืนชีตที่ต้องการ ถ้ายังไม่มีให้สร้างพร้อม header ให้เลย
+ * ใช้กับชีตที่เพิ่มเข้ามาทีหลัง (เช่น AuditLog) ซึ่งระบบที่ติดตั้งไปแล้วจะยังไม่มี
+ */
+function _ensureSheet(name) {
+  var ss = _ss();
+  var sh = ss.getSheetByName(name);
+  if (sh) return sh;
+  sh = ss.insertSheet(name);
+  sh.appendRow([SHEETS[name] || (name.toLowerCase() + '_json')]);
+  sh.setFrozenRows(1);
+  sh.getRange(1, 1).setFontWeight('bold').setBackground('#1e293b').setFontColor('#ffffff');
+  sh.setColumnWidth(1, 720);
+  return sh;
+}
+
 /** อ่านทุกแถว -> [{rowIndex, data}] */
 function _readAll(name) {
   var sh = _ss().getSheetByName(name);
@@ -142,22 +159,69 @@ function _now() { return new Date().toISOString(); }
 function _uuid() { return Utilities.getUuid(); }
 
 // ============================================================
+// PASSWORD — เก็บเป็น SHA-256 hash + salt เฉพาะราย ไม่เก็บรหัสจริง
+// ============================================================
+function _genSalt() { return Utilities.getUuid().replace(/-/g, ''); }
+
+/** แฮชรหัสผ่าน (salt + รหัสผ่าน) -> hex string */
+function _hashPassword(plain, salt) {
+  var raw = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, salt + plain, Utilities.Charset.UTF_8);
+  return raw.map(function (b) { return ('0' + (b & 0xFF).toString(16)).slice(-2); }).join('');
+}
+
+/** ตั้งรหัสผ่านใหม่ให้ user object — เก็บเฉพาะ hash และลบรหัสจริงทิ้ง */
+function _setPassword(d, plain) {
+  d.password_salt = _genSalt();
+  d.password_hash = _hashPassword(plain, d.password_salt);
+  delete d.password;
+  return d;
+}
+
+/**
+ * ตรวจรหัสผ่าน รองรับบัญชีเก่าที่ยังเก็บเป็นข้อความธรรมดา
+ * ถ้า migrated = true ผู้เรียกต้องเขียน user กลับลงชีตเพื่อบันทึก hash ใหม่
+ */
+function _verifyPassword(d, plain) {
+  if (d.password_hash && d.password_salt) {
+    return { ok: _hashPassword(plain, d.password_salt) === d.password_hash, migrated: false };
+  }
+  if (d.password !== undefined && d.password === plain) {
+    _setPassword(d, plain);
+    return { ok: true, migrated: true };
+  }
+  return { ok: false, migrated: false };
+}
+
+// ============================================================
+// LOCK — กันข้อมูลชนกันเมื่อมีผู้ใช้หลายคนบันทึกพร้อมกัน
+// ============================================================
+/**
+ * ครอบงานที่ "อ่าน -> คำนวณ -> เขียน" ด้วยล็อกระดับสคริปต์
+ * ห้ามเรียกซ้อนกัน (ล็อกของ Apps Script ไม่ใช่ reentrant) — ให้ครอบเฉพาะจุดนอกสุด
+ */
+function _withLock(fn) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) throw new Error('ระบบกำลังบันทึกรายการอื่นอยู่ กรุณาลองใหม่อีกครั้ง');
+  try { return fn(); } finally { lock.releaseLock(); }
+}
+
+/** ตัดข้อมูลลับออกก่อนส่งกลับฝั่งหน้าเว็บ */
+function _stripSecrets(d) {
+  var o = Object.assign({}, d);
+  delete o.password; delete o.password_hash; delete o.password_salt;
+  return o;
+}
+
+// ============================================================
 // INITIALIZE SHEETS
 // ============================================================
 function initializeSheets() {
   try {
     var ss = _ss();
-    var existing = ss.getSheets().map(function (s) { return s.getName(); });
 
     // 1) สร้างทุกชีตที่ยังไม่มี พร้อม header column
     Object.keys(SHEETS).forEach(function (name) {
-      if (existing.indexOf(name) === -1) {
-        var sh = ss.insertSheet(name);
-        sh.appendRow([SHEETS[name]]);
-        sh.setFrozenRows(1);
-        sh.getRange(1, 1).setFontWeight('bold').setBackground('#1e293b').setFontColor('#ffffff');
-        sh.setColumnWidth(1, 720);
-      }
+      _ensureSheet(name);
     });
 
     // ลบ Sheet1 default ถ้ายังว่างอยู่
@@ -200,10 +264,9 @@ function initializeSheets() {
     if (_readAll('Users').length === 0) {
       Object.keys(CONFIG.ADMIN_USERS).forEach(function (username) {
         var role = CONFIG.USER_ROLES[username] || { name: username, permissions: [] };
-        _append('Users', {
+        _append('Users', _setPassword({
           id: _uuid(),
           username: username,
-          password: CONFIG.ADMIN_USERS[username],
           role: username,
           name: role.name,
           email: '',
@@ -214,7 +277,7 @@ function initializeSheets() {
           last_login: '',
           created_at: _now(),
           updated_at: _now()
-        });
+        }, CONFIG.ADMIN_USERS[username]));
       });
     } else {
       try { migrateOldUsers(); } catch (err) { logError(err.toString(), 'migrateOldUsers'); }
@@ -277,6 +340,8 @@ function migrateOldUsers() {
     }
     if (d.line_user_id === undefined) { d.line_user_id = ''; changed = true; }
     if (d.employee_id === undefined) { d.employee_id = ''; changed = true; }
+    // แปลงรหัสผ่านเดิมที่เก็บเป็นข้อความธรรมดาให้เป็น hash (รหัสเดิมยังใช้เข้าระบบได้ตามปกติ)
+    if (d.password !== undefined && !d.password_hash) { _setPassword(d, d.password); changed = true; }
     if (changed) { d.updated_at = _now(); _update('Users', u.rowIndex, d); }
   });
   return { status: 'success', message: 'migrate users สำเร็จ' };
@@ -297,7 +362,7 @@ function login(username, password) {
     }
     if (!found) return { status: 'error', message: 'ไม่พบบัญชีผู้ใช้นี้' };
     if (!found.data.active) return { status: 'error', message: 'บัญชีนี้ถูกระงับการใช้งาน' };
-    if (found.data.password !== password) return { status: 'error', message: 'รหัสผ่านไม่ถูกต้อง' };
+    if (!_verifyPassword(found.data, password).ok) return { status: 'error', message: 'รหัสผ่านไม่ถูกต้อง' };
 
     var rolePerms = (CONFIG.USER_ROLES[found.data.role] || {}).permissions || found.data.permissions || [];
     var now = new Date();
@@ -317,6 +382,7 @@ function login(username, password) {
     found.data.permissions = rolePerms;
     found.data.last_login = now.toISOString();
     _update('Users', found.rowIndex, found.data);
+    _audit(found.data.name, found.data.role, 'LOGIN', found.data.username, '');
 
     return {
       status: 'success',
@@ -425,9 +491,11 @@ function getDashboardSummary(token) {
   var leaves = _readAll('LeaveRequests').map(function(r){ return r.data; });
   if (deptFilter) leaves = leaves.filter(function(d){ return deptFilter.indexOf(d.department_id) !== -1; });
 
+  // คำนวณสิทธิ์ครั้งเดียวนอก filter — _canApproveAs อ่านชีต Users ทุกครั้งที่เรียก
+  var canL1 = _canApproveAs(user, 1, cfg), canL2 = _canApproveAs(user, 2, cfg);
   var pending = leaves.filter(function(d){
-    if (d.status === 'SUBMITTED') return _canApprove(user.role, 1, cfg);
-    if (d.status === 'L1_APPROVED') return _canApprove(user.role, 2, cfg);
+    if (d.status === 'SUBMITTED') return canL1;
+    if (d.status === 'L1_APPROVED') return canL2;
     return false;
   }).length;
 
@@ -450,16 +518,78 @@ function getDashboardSummary(token) {
   };
 }
 
+// ============================================================
+// DELEGATION — มอบหมายให้คนอื่นอนุมัติแทนช่วงที่ไม่อยู่
+// ============================================================
+/** คนที่มอบหมายให้ user คนนี้อนุมัติแทน และการมอบหมายยังมีผลในวันนี้ */
+function _activeDelegators(userId) {
+  if (!userId) return [];
+  var today = _isoDate(new Date());
+  return _readAll('Users').map(function (r) { return r.data; }).filter(function (u) {
+    if (!u.active || u.delegate_user_id !== userId) return false;
+    if (u.delegate_from && today < u.delegate_from) return false;
+    if (u.delegate_to && today > u.delegate_to) return false;
+    return true;
+  });
+}
+
+/** บทบาททั้งหมดที่ user คนนี้ใช้อนุมัติได้ (ของตัวเอง + ที่รับมอบหมายมา) */
+function _effectiveRoles(user, delegators) {
+  var roles = [user.role];
+  (delegators || _activeDelegators(user.id)).forEach(function (u) {
+    if (roles.indexOf(u.role) === -1) roles.push(u.role);
+  });
+  return roles;
+}
+
 /** คืน array ของ department_id ที่ supervisor คนนี้ดูแล (null = ไม่กรอง) */
 function _supervisorDeptIds(user) {
-  if (user.role !== 'supervisor') return null;
+  var delegators = _activeDelegators(user.id);
+  var roles = _effectiveRoles(user, delegators);
+  // มีบทบาทอื่นที่เห็นได้ทุกแผนก (admin/hr) ก็ไม่ต้องกรอง
+  if (roles.some(function (r) { return r !== 'supervisor'; })) return null;
+
+  // นับทั้งแผนกของตัวเอง และแผนกของคนที่มอบหมายให้อนุมัติแทน
+  var ownerIds = [user.id].concat(delegators.map(function (u) { return u.id; }));
   var ids = [];
   _readAll('Departments').forEach(function(r){
     var d = r.data;
     var heads = Array.isArray(d.head_user_ids) ? d.head_user_ids : (d.head_user_id ? [d.head_user_id] : []);
-    if (heads.indexOf(user.id) !== -1) ids.push(d.id);
+    if (heads.some(function (h) { return ownerIds.indexOf(h) !== -1; })) ids.push(d.id);
   });
   return ids.length ? ids : null;
+}
+
+// ============================================================
+// AUDIT LOG — บันทึกว่าใครทำอะไรกับข้อมูลสำคัญ
+// ============================================================
+/**
+ * บันทึกร่องรอยการใช้งาน — ห้ามทำให้งานหลักล้มเหลว จึงกลืน error ทิ้งเสมอ
+ * action: LOGIN, APPROVE_LEAVE, REJECT_LEAVE, CANCEL_LEAVE, DELETE_LEAVE,
+ *         SAVE_USER, DELETE_USER, SAVE_CONFIG, EDIT_LEAVE
+ */
+function _audit(actorName, actorRole, action, target, detail) {
+  try {
+    _ensureSheet('AuditLog');
+    _append('AuditLog', {
+      id: _uuid(),
+      actor_name: actorName || '',
+      actor_role: actorRole || '',
+      action: action,
+      target: target || '',
+      detail: detail || '',
+      timestamp: _now()
+    });
+  } catch (e) {}
+}
+
+/** ดูประวัติการใช้งาน (เฉพาะผู้ดูแลระบบ) — ใหม่สุดขึ้นก่อน */
+function getAuditLog(token, limit) {
+  var user = _auth(token);
+  if (user.role !== 'admin') return { status: 'error', message: 'ไม่มีสิทธิ์' };
+  var rows = _readAll('AuditLog').map(function (r) { return r.data; });
+  rows.sort(function (a, b) { return a.timestamp < b.timestamp ? 1 : -1; });
+  return { status: 'success', data: rows.slice(0, Number(limit) || 200) };
 }
 
 // ============================================================
@@ -498,8 +628,8 @@ function changePassword(token, currentPw, newPw) {
     var users = _readAll('Users');
     for (var i = 0; i < users.length; i++) {
       if (users[i].data.username === user.username) {
-        if (users[i].data.password !== currentPw) return { status: 'error', message: 'รหัสผ่านปัจจุบันไม่ถูกต้อง' };
-        users[i].data.password = newPw;
+        if (!_verifyPassword(users[i].data, currentPw).ok) return { status: 'error', message: 'รหัสผ่านปัจจุบันไม่ถูกต้อง' };
+        _setPassword(users[i].data, newPw);
         users[i].data.updated_at = _now();
         _update('Users', users[i].rowIndex, users[i].data);
         return { status: 'success', message: 'เปลี่ยนรหัสผ่านเรียบร้อยแล้ว' };
@@ -664,11 +794,7 @@ function getUsers(token) {
   if (user.role !== 'admin') return { status: 'error', message: 'ไม่มีสิทธิ์' };
   try {
     var rows = _readAll('Users');
-    var data = rows.map(function(r) {
-      var d = Object.assign({}, r.data);
-      delete d.password;
-      return d;
-    });
+    var data = rows.map(function(r) { return _stripSecrets(r.data); });
     return { status: 'success', data: data };
   } catch (err) {
     return { status: 'error', message: err.toString() };
@@ -706,17 +832,21 @@ function saveUser(token, payload) {
       d.role = payload.role;
       d.permissions = rolePerms;
       d.active = payload.active !== false;
-      if (payload.password) d.password = payload.password;
+      d.delegate_user_id = payload.delegate_user_id || '';
+      d.delegate_from = payload.delegate_from || '';
+      d.delegate_to = payload.delegate_to || '';
+      if (payload.password) _setPassword(d, payload.password);
       d.updated_at = _now();
       _update('Users', found.rowIndex, d);
+      _audit(actor.name, actor.role, 'SAVE_USER', d.username,
+             'แก้ไขบัญชี บทบาท=' + d.role + (payload.password ? ' (เปลี่ยนรหัสผ่าน)' : ''));
       return { status: 'success', message: 'แก้ไขผู้ใช้เรียบร้อยแล้ว' };
     } else {
       // เพิ่มใหม่
       if (!payload.password) return { status: 'error', message: 'กรุณาระบุรหัสผ่าน' };
-      _append('Users', {
+      _append('Users', _setPassword({
         id: _uuid(),
         username: payload.username,
-        password: payload.password,
         role: payload.role,
         name: payload.name,
         email: payload.email || '',
@@ -724,10 +854,14 @@ function saveUser(token, payload) {
         employee_id: '',
         permissions: rolePerms,
         active: payload.active !== false,
+        delegate_user_id: payload.delegate_user_id || '',
+        delegate_from: payload.delegate_from || '',
+        delegate_to: payload.delegate_to || '',
         last_login: '',
         created_at: _now(),
         updated_at: _now()
-      });
+      }, payload.password));
+      _audit(actor.name, actor.role, 'SAVE_USER', payload.username, 'สร้างบัญชีใหม่ บทบาท=' + payload.role);
       return { status: 'success', message: 'เพิ่มผู้ใช้เรียบร้อยแล้ว' };
     }
   } catch (err) {
@@ -748,6 +882,7 @@ function deleteUser(token, id) {
     if (!found) return { status: 'error', message: 'ไม่พบผู้ใช้' };
     if (found.data.username === actor.username) return { status: 'error', message: 'ไม่สามารถลบบัญชีตัวเองได้' };
     _delete('Users', found.rowIndex);
+    _audit(actor.name, actor.role, 'DELETE_USER', found.data.username, 'บทบาท=' + found.data.role);
     return { status: 'success', message: 'ลบผู้ใช้เรียบร้อยแล้ว' };
   } catch (err) {
     return { status: 'error', message: err.toString() };
@@ -795,17 +930,16 @@ function promoteEmployeeToUser(token, payload) {
       d.name = fullName;
       d.email = emp.email || d.email || '';
       d.active = payload.active !== false;
-      if (payload.password) d.password = payload.password;
+      if (payload.password) _setPassword(d, payload.password);
       d.updated_at = _now();
       _update('Users', linked.rowIndex, d);
       return { status: 'success', message: 'อัปเดตบทบาทผู้ใช้ระบบเรียบร้อยแล้ว' };
     }
 
     if (!payload.password) return { status: 'error', message: 'กรุณาระบุรหัสผ่าน' };
-    _append('Users', {
+    _append('Users', _setPassword({
       id: _uuid(),
       username: username,
-      password: payload.password,
       role: role,
       name: fullName,
       email: emp.email || '',
@@ -816,7 +950,7 @@ function promoteEmployeeToUser(token, payload) {
       last_login: '',
       created_at: _now(),
       updated_at: _now()
-    });
+    }, payload.password));
     return { status: 'success', message: 'ตั้งค่าบัญชีผู้ใช้ระบบเรียบร้อยแล้ว' };
   } catch (err) {
     logError(err.toString(), 'promoteEmployeeToUser');
@@ -840,7 +974,7 @@ function getConfig(token) {
 }
 
 function saveConfig(token, payload) {
-  _auth(token);
+  var actor = _auth(token);
   try {
     var c = _getConfigRow();
     if (!c) return { status: 'error', message: 'ไม่พบ Config' };
@@ -854,6 +988,9 @@ function saveConfig(token, payload) {
     if (d.approval_levels !== undefined) d.approval_levels = Number(d.approval_levels) || 1;
     d.updated_at = _now();
     _update('Config', c.rowIndex, d);
+    // เก็บเฉพาะชื่อฟิลด์ที่ถูกแก้ ไม่เก็บค่า กันไม่ให้ token/secret หลุดลง audit log
+    var changed = allow.filter(function (k) { return payload[k] !== undefined; });
+    _audit(actor.name, actor.role, 'SAVE_CONFIG', 'ตั้งค่าระบบ', 'แก้ไข: ' + changed.join(', '));
     return { status: 'success', message: 'บันทึกการตั้งค่าเรียบร้อยแล้ว', config: d };
   } catch (err) {
     logError(err.toString(), 'saveConfig');
@@ -1375,46 +1512,47 @@ function createLeaveRequest(token, obj) {
 
     var year = parseInt(obj.start_date.substring(0, 4), 10);
 
-    // ตรวจโควตา (เฉพาะประเภทที่มีโควตาจำกัด)
-    if (Number(type.default_quota_days) > 0) {
-      var remain = _remaining(emp.id, type.id, year);
-      if (total > remain) {
-        return { status: 'error', message: 'วันลาคงเหลือไม่พอ (เหลือ ' + remain + ' วัน ขอลา ' + total + ' วัน)' };
+    // ตรวจโควตา + ออกเลขที่ + บันทึก ต้องอยู่ในล็อกเดียวกัน
+    // ไม่งั้นคนยื่นพร้อมกันจะได้เลขที่ซ้ำ และยอดโควตาที่หักไปจะหายไปหนึ่งรายการ
+    var locked = _withLock(function () {
+      if (Number(type.default_quota_days) > 0) {
+        var remain = _remaining(emp.id, type.id, year);
+        if (total > remain) {
+          return { error: 'วันลาคงเหลือไม่พอ (เหลือ ' + remain + ' วัน ขอลา ' + total + ' วัน)' };
+        }
       }
-    }
-
-    var cfg = _getConfigRow().data;
-    var beYear = year + 543;
-    var req = {
-      id: _uuid(),
-      request_no: _genRequestNo(beYear),
-      employee_id: emp.id,
-      employee_name: (emp.prefix || '') + emp.first_name + ' ' + emp.last_name,
-      department_id: emp.department_id || '',
-      leave_type_id: type.id,
-      leave_type_name: type.name,
-      start_date: obj.start_date,
-      end_date: obj.end_date,
-      start_half: startHalf,
-      end_half: endHalf,
-      start_time: startHalf === 'hourly' ? obj.start_time : '',
-      end_time: startHalf === 'hourly' ? obj.end_time : '',
-      total_days: total,
-      reason: obj.reason || '',
-      contact_during_leave: obj.contact_during_leave || '',
-      attachment_file_ids: obj.attachment_file_ids || [],
-      status: 'SUBMITTED',
-      current_level: 1,
-      approvals: [],
-      submitted_at: _now(),
-      decided_at: '',
-      created_at: _now(),
-      updated_at: _now()
-    };
-    _append('LeaveRequests', req);
-
-    // หักเข้า pending
-    _adjustBalance(emp.id, type.id, year, total, 0);
+      var r = {
+        id: _uuid(),
+        request_no: _genRequestNo(year + 543),
+        employee_id: emp.id,
+        employee_name: (emp.prefix || '') + emp.first_name + ' ' + emp.last_name,
+        department_id: emp.department_id || '',
+        leave_type_id: type.id,
+        leave_type_name: type.name,
+        start_date: obj.start_date,
+        end_date: obj.end_date,
+        start_half: startHalf,
+        end_half: endHalf,
+        start_time: startHalf === 'hourly' ? obj.start_time : '',
+        end_time: startHalf === 'hourly' ? obj.end_time : '',
+        total_days: total,
+        reason: obj.reason || '',
+        contact_during_leave: obj.contact_during_leave || '',
+        attachment_file_ids: obj.attachment_file_ids || [],
+        status: 'SUBMITTED',
+        current_level: 1,
+        approvals: [],
+        submitted_at: _now(),
+        decided_at: '',
+        created_at: _now(),
+        updated_at: _now()
+      };
+      _append('LeaveRequests', r);
+      _adjustBalance(emp.id, type.id, year, total, 0);  // หักเข้า pending
+      return { req: r };
+    });
+    if (locked.error) return { status: 'error', message: locked.error };
+    var req = locked.req;
 
     _notifyApprovers(req, 1);
     _notifyEmployeeSubmit(req);
@@ -1457,6 +1595,27 @@ function getLeaveRequests(token, filters) {
   return { status: 'success', data: data };
 }
 
+/**
+ * ข้อมูลไฟล์แนบสำหรับแสดงผล — thumb ใช้พรีวิว, url ใช้เปิดดูเต็ม (รองรับ PDF ด้วย)
+ * ถ้าอ่านไฟล์จาก Drive ไม่ได้ (ถูกลบ/ไม่มีสิทธิ์) ยังคืนลิงก์ให้กดลองเปิดเองได้
+ */
+function _attachmentInfo(fid) {
+  var name = '', mime = '';
+  try {
+    var f = DriveApp.getFileById(fid);
+    name = f.getName();
+    mime = f.getMimeType();
+  } catch (e) {}
+  return {
+    id: fid,
+    name: name || 'ไฟล์แนบ',
+    mime: mime,
+    is_image: mime.indexOf('image/') === 0,
+    thumb: 'https://drive.google.com/thumbnail?id=' + fid + '&sz=w400',
+    url: 'https://drive.google.com/file/d/' + fid + '/view'
+  };
+}
+
 function getLeaveRequest(token, id) {
   _auth(token);
   var rows = _readAll('LeaveRequests');
@@ -1466,9 +1625,7 @@ function getLeaveRequest(token, id) {
       d.department_name = _deptName(d.department_id);
       var emp = _empById(d.employee_id);
       d.employee_phone = emp ? emp.phone : '';
-      d.attachments = (d.attachment_file_ids || []).map(function (fid) {
-        return { id: fid, url: 'https://drive.google.com/thumbnail?id=' + fid };
-      });
+      d.attachments = (d.attachment_file_ids || []).map(_attachmentInfo);
       return { status: 'success', data: d };
     }
   }
@@ -1476,14 +1633,15 @@ function getLeaveRequest(token, id) {
 }
 
 function cancelLeaveRequest(token, id, byName) {
-  _auth(token);
+  var actor = _auth(token);
   try {
-    var rows = _readAll('LeaveRequests');
-    for (var i = 0; i < rows.length; i++) {
-      if (rows[i].data.id === id) {
+    var out = _withLock(function () {
+      var rows = _readAll('LeaveRequests');
+      for (var i = 0; i < rows.length; i++) {
+        if (rows[i].data.id !== id) continue;
         var d = rows[i].data;
-        if (d.status === 'APPROVED') return { status: 'error', message: 'ใบลาที่อนุมัติแล้วยกเลิกไม่ได้ (ติดต่อ HR)' };
-        if (d.status === 'CANCELLED' || d.status === 'REJECTED') return { status: 'error', message: 'ใบลานี้สิ้นสุดแล้ว' };
+        if (d.status === 'APPROVED') return { error: 'ใบลาที่อนุมัติแล้วยกเลิกไม่ได้ (ติดต่อ HR)' };
+        if (d.status === 'CANCELLED' || d.status === 'REJECTED') return { error: 'ใบลานี้สิ้นสุดแล้ว' };
 
         var year = parseInt(d.start_date.substring(0, 4), 10);
         // คืน pending
@@ -1494,10 +1652,13 @@ function cancelLeaveRequest(token, id, byName) {
         d.updated_at = _now();
         d.approvals.push({ level: d.current_level, approver_name: byName || 'ผู้ดูแล', action: 'cancel', comment: 'ยกเลิกใบลา', timestamp: _now() });
         _update('LeaveRequests', rows[i].rowIndex, d);
-        return { status: 'success', message: 'ยกเลิกใบลาแล้ว' };
+        return { req: d };
       }
-    }
-    return { status: 'error', message: 'ไม่พบใบลา' };
+      return { error: 'ไม่พบใบลา' };
+    });
+    if (out.error) return { status: 'error', message: out.error };
+    _audit(actor.name, actor.role, 'CANCEL_LEAVE', out.req.request_no, out.req.employee_name);
+    return { status: 'success', message: 'ยกเลิกใบลาแล้ว' };
   } catch (err) {
     logError(err.toString(), 'cancelLeaveRequest');
     return { status: 'error', message: err.toString() };
@@ -1760,6 +1921,11 @@ function _canApprove(userRole, level, cfg) {
   return false;
 }
 
+/** อนุมัติระดับนี้ได้ไหม โดยนับสิทธิ์ที่รับมอบหมายมาแทนคนอื่นด้วย */
+function _canApproveAs(user, level, cfg) {
+  return _effectiveRoles(user).some(function (role) { return _canApprove(role, level, cfg); });
+}
+
 /** คิวที่ผู้ใช้คนนี้ต้องอนุมัติ */
 function getApprovalQueue(token) {
   var user = _auth(token);
@@ -1768,11 +1934,14 @@ function getApprovalQueue(token) {
   _readAll('Departments').forEach(function (r) { depts[r.data.id] = r.data.name; });
   var deptFilter = _supervisorDeptIds(user);
 
+  // คำนวณสิทธิ์ครั้งเดียวนอก filter — _canApproveAs อ่านชีต Users ทุกครั้งที่เรียก
+  var canL1 = _canApproveAs(user, 1, cfg), canL2 = _canApproveAs(user, 2, cfg);
+
   var data = _readAll('LeaveRequests').map(function (r) { return r.data; })
     .filter(function (d) {
       if (deptFilter && deptFilter.indexOf(d.department_id) === -1) return false;
-      if (d.status === 'SUBMITTED') return _canApprove(user.role, 1, cfg);
-      if (d.status === 'L1_APPROVED') return _canApprove(user.role, 2, cfg);
+      if (d.status === 'SUBMITTED') return canL1;
+      if (d.status === 'L1_APPROVED') return canL2;
       return false;
     })
     .map(function (d) {
@@ -1791,41 +1960,46 @@ function getApprovalCount(token) {
 }
 
 function approveLeave(token, id, comment) {
-  var user = _auth(token);
-  return _processDecision(user.name, user.role, id, 'approve', comment);
+  return _processDecision(_auth(token), id, 'approve', comment);
 }
 
 function rejectLeave(token, id, comment) {
-  var user = _auth(token);
-  return _processDecision(user.name, user.role, id, 'reject', comment);
+  return _processDecision(_auth(token), id, 'reject', comment);
 }
 
-/** core การตัดสินใจ ใช้ร่วมทั้งเว็บและ LINE postback (มีการแจ้งเตือน) */
-function _processDecision(actorName, actorRole, id, decision, comment) {
+/**
+ * core การตัดสินใจ ใช้ร่วมทั้งเว็บและ LINE postback (มีการแจ้งเตือน)
+ * actor = user object ({id, name, role}) เพื่อให้ตรวจสิทธิ์ที่รับมอบหมายมาได้ด้วย
+ */
+function _processDecision(actor, id, decision, comment) {
+  var actorName = actor.name, actorRole = actor.role;
   try {
     var cfg = _getConfigRow().data;
     var levels = Number(cfg.approval_levels) || 1;
-    var rows = _readAll('LeaveRequests');
-    for (var i = 0; i < rows.length; i++) {
-      if (rows[i].data.id === id) {
+
+    // เปลี่ยนสถานะ + ปรับยอดโควตาให้อยู่ในล็อกเดียวกัน แล้วค่อยส่งแจ้งเตือนนอกล็อก
+    // (การ push LINE ช้า ไม่ควรถือล็อกค้างไว้)
+    var out = _withLock(function () {
+      var rows = _readAll('LeaveRequests');
+      for (var i = 0; i < rows.length; i++) {
+        if (rows[i].data.id !== id) continue;
         var d = rows[i].data;
         if (d.status !== 'SUBMITTED' && d.status !== 'L1_APPROVED') {
-          return { status: 'error', message: 'ใบลานี้ไม่อยู่ในสถานะรออนุมัติ' };
+          return { error: 'ใบลานี้ไม่อยู่ในสถานะรออนุมัติ' };
         }
         var level = d.current_level;
-        if (!_canApprove(actorRole, level, cfg)) {
-          return { status: 'error', message: 'คุณไม่มีสิทธิ์ดำเนินการในระดับนี้' };
+        if (!_canApproveAs(actor, level, cfg)) {
+          return { error: 'คุณไม่มีสิทธิ์ดำเนินการในระดับนี้' };
         }
         var year = parseInt(d.start_date.substring(0, 4), 10);
 
         if (decision === 'reject') {
-          if (!comment) return { status: 'error', message: 'กรุณาระบุเหตุผลการไม่อนุมัติ' };
+          if (!comment) return { error: 'กรุณาระบุเหตุผลการไม่อนุมัติ' };
           d.approvals.push({ level: level, approver_name: actorName, action: 'reject', comment: comment, timestamp: _now() });
           d.status = 'REJECTED'; d.decided_at = _now(); d.updated_at = _now();
           _update('LeaveRequests', rows[i].rowIndex, d);
           _adjustBalance(d.employee_id, d.leave_type_id, year, -d.total_days, 0);
-          _notifyEmployeeDecision(d, 'reject', actorName, comment);
-          return { status: 'success', message: 'บันทึกการไม่อนุมัติแล้ว' };
+          return { req: d, notify: 'decision', result: { status: 'success', message: 'บันทึกการไม่อนุมัติแล้ว' } };
         }
 
         // approve
@@ -1833,18 +2007,25 @@ function _processDecision(actorName, actorRole, id, decision, comment) {
         if (level < levels) {
           d.status = 'L1_APPROVED'; d.current_level = level + 1; d.updated_at = _now();
           _update('LeaveRequests', rows[i].rowIndex, d);
-          _notifyApprovers(d, level + 1);   // แจ้งผู้อนุมัติระดับถัดไป
-          return { status: 'success', message: 'อนุมัติระดับ ' + level + ' แล้ว ส่งต่อระดับ ' + (level + 1), next: true };
-        } else {
-          d.status = 'APPROVED'; d.decided_at = _now(); d.updated_at = _now();
-          _update('LeaveRequests', rows[i].rowIndex, d);
-          _adjustBalance(d.employee_id, d.leave_type_id, year, -d.total_days, d.total_days);
-          _notifyEmployeeDecision(d, 'approve', actorName, comment);
-          return { status: 'success', message: 'อนุมัติใบลาเรียบร้อยแล้ว', approved: true };
+          return { req: d, notify: 'next', nextLevel: level + 1,
+                   result: { status: 'success', message: 'อนุมัติระดับ ' + level + ' แล้ว ส่งต่อระดับ ' + (level + 1), next: true } };
         }
+        d.status = 'APPROVED'; d.decided_at = _now(); d.updated_at = _now();
+        _update('LeaveRequests', rows[i].rowIndex, d);
+        _adjustBalance(d.employee_id, d.leave_type_id, year, -d.total_days, d.total_days);
+        return { req: d, notify: 'decision', result: { status: 'success', message: 'อนุมัติใบลาเรียบร้อยแล้ว', approved: true } };
       }
-    }
-    return { status: 'error', message: 'ไม่พบใบลา' };
+      return { error: 'ไม่พบใบลา' };
+    });
+
+    if (out.error) return { status: 'error', message: out.error };
+
+    if (out.notify === 'next') _notifyApprovers(out.req, out.nextLevel);   // แจ้งผู้อนุมัติระดับถัดไป
+    else _notifyEmployeeDecision(out.req, decision, actorName, comment);
+
+    _audit(actorName, actorRole, decision === 'reject' ? 'REJECT_LEAVE' : 'APPROVE_LEAVE',
+           out.req.request_no, out.req.employee_name + (comment ? ' — ' + comment : ''));
+    return out.result;
   } catch (err) {
     logError(err.toString(), '_processDecision');
     return { status: 'error', message: err.toString() };
@@ -1925,11 +2106,14 @@ function liffGetHistory(lineUserId) {
     .filter(function (d) { return d.employee_id === emp.id; })
     .map(function (d) {
       return {
-        id: d.id, request_no: d.request_no, leave_type_name: d.leave_type_name,
+        id: d.id, request_no: d.request_no,
+        leave_type_id: d.leave_type_id, leave_type_name: d.leave_type_name,
         start_date: d.start_date, end_date: d.end_date, start_half: d.start_half,
         start_time: d.start_time, end_time: d.end_time,
         total_days: d.total_days, status: d.status, reason: d.reason,
-        created_at: d.created_at,
+        contact_during_leave: d.contact_during_leave || '',
+        attachment_file_ids: d.attachment_file_ids || [],
+        created_at: d.created_at, edited_at: d.edited_at || '',
         last_comment: (d.approvals && d.approvals.length) ? d.approvals[d.approvals.length - 1].comment : ''
       };
     });
@@ -1937,16 +2121,110 @@ function liffGetHistory(lineUserId) {
   return { status: 'success', data: data };
 }
 
+/**
+ * แก้ไขใบลาที่ยังไม่มีใครอนุมัติ (สถานะ SUBMITTED เท่านั้น)
+ * พอมีคนอนุมัติระดับใดไปแล้วต้องยกเลิกแล้วยื่นใหม่ ไม่งั้นสิ่งที่ผู้อนุมัติเห็นตอนกดจะไม่ตรงกับของจริง
+ */
+function liffUpdateLeave(lineUserId, leaveId, obj) {
+  try {
+    var emp = _empByLine(lineUserId);
+    if (!emp) return { status: 'error', message: 'ยังไม่ได้ผูกบัญชี' };
+
+    var type = _typeById(obj.leave_type_id);
+    if (!type) return { status: 'error', message: 'ไม่พบประเภทการลา' };
+    if (!obj.start_date || !obj.end_date) return { status: 'error', message: 'กรุณาเลือกวันที่' };
+
+    var startHalf = obj.start_half || 'full';
+    var endHalf = obj.end_half || 'full';
+
+    if (startHalf === 'hourly') {
+      if (!obj.start_time || !obj.end_time) return { status: 'error', message: 'กรุณาระบุเวลาเริ่มและเวลาสิ้นสุด' };
+      if (_timeToMinutes(obj.start_time) === null || _timeToMinutes(obj.end_time) === null) {
+        return { status: 'error', message: 'รูปแบบเวลาไม่ถูกต้อง' };
+      }
+      if (obj.end_date < obj.start_date) return { status: 'error', message: 'วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม' };
+      if (obj.start_date === obj.end_date && _timeToMinutes(obj.end_time) <= _timeToMinutes(obj.start_time)) {
+        return { status: 'error', message: 'เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม' };
+      }
+    }
+
+    var total = _calcLeaveDays(obj.start_date, obj.end_date, startHalf, endHalf, obj.start_time, obj.end_time);
+    if (total <= 0) return { status: 'error', message: 'ช่วงวันที่เลือกไม่มีวันทำงาน' };
+
+    var attachIds = obj.attachment_file_ids || [];
+    if (type.requires_attachment && !attachIds.length) {
+      return { status: 'error', message: 'ประเภทนี้ต้องแนบเอกสาร' };
+    }
+
+    var year = parseInt(obj.start_date.substring(0, 4), 10);
+
+    var out = _withLock(function () {
+      var rows = _readAll('LeaveRequests');
+      for (var i = 0; i < rows.length; i++) {
+        var d = rows[i].data;
+        if (d.id !== leaveId || d.employee_id !== emp.id) continue;
+        if (d.status !== 'SUBMITTED') {
+          return { error: 'แก้ไขได้เฉพาะใบลาที่ยังไม่มีผู้อนุมัติดำเนินการ กรุณายกเลิกแล้วยื่นใหม่' };
+        }
+
+        var oldTotal = Number(d.total_days);
+        var oldYear = parseInt(d.start_date.substring(0, 4), 10);
+        var sameBucket = (type.id === d.leave_type_id && year === oldYear);
+
+        if (Number(type.default_quota_days) > 0) {
+          var remain = _remaining(emp.id, type.id, year);
+          // ยอดของใบเดิมยังถูกกันไว้ใน pending อยู่ ต้องบวกคืนก่อนเทียบ ไม่งั้นจะเตือนว่าโควตาไม่พอทั้งที่พอ
+          if (sameBucket) remain += oldTotal;
+          if (total > remain) return { error: 'วันลาคงเหลือไม่พอ (เหลือ ' + remain + ' วัน)' };
+        }
+
+        // คืนยอดเดิมก่อน แล้วค่อยกันยอดใหม่ (รองรับกรณีเปลี่ยนประเภทลาหรือข้ามปี)
+        _adjustBalance(emp.id, d.leave_type_id, oldYear, -oldTotal, 0);
+        _adjustBalance(emp.id, type.id, year, total, 0);
+
+        d.leave_type_id = type.id;
+        d.leave_type_name = type.name;
+        d.start_date = obj.start_date;
+        d.end_date = obj.end_date;
+        d.start_half = startHalf;
+        d.end_half = endHalf;
+        d.start_time = startHalf === 'hourly' ? obj.start_time : '';
+        d.end_time = startHalf === 'hourly' ? obj.end_time : '';
+        d.total_days = total;
+        d.reason = obj.reason || '';
+        d.contact_during_leave = obj.contact_during_leave || '';
+        d.attachment_file_ids = attachIds;
+        d.edited_at = _now();
+        d.updated_at = _now();
+        _update('LeaveRequests', rows[i].rowIndex, d);
+        return { req: d, oldTotal: oldTotal };
+      }
+      return { error: 'ไม่พบใบลา' };
+    });
+
+    if (out.error) return { status: 'error', message: out.error };
+
+    _notifyApprovers(out.req, out.req.current_level);  // แจ้งผู้อนุมัติว่ามีการแก้ไข
+    _audit(out.req.employee_name, 'employee', 'EDIT_LEAVE', out.req.request_no,
+           'แก้ไขใบลา: ' + out.oldTotal + ' -> ' + out.req.total_days + ' วัน');
+    return { status: 'success', message: 'แก้ไขใบลาเรียบร้อย', request_no: out.req.request_no };
+  } catch (err) {
+    logError(err.toString(), 'liffUpdateLeave');
+    return { status: 'error', message: err.toString() };
+  }
+}
+
 function liffCancelLeave(lineUserId, leaveId, reason) {
   try {
     var emp = _empByLine(lineUserId);
     if (!emp) return { status: 'error', message: 'ยังไม่ได้ผูกบัญชี' };
-    var rows = _readAll('LeaveRequests');
-    for (var i = 0; i < rows.length; i++) {
-      var d = rows[i].data;
-      if (d.id === leaveId && d.employee_id === emp.id) {
+    var out = _withLock(function () {
+      var rows = _readAll('LeaveRequests');
+      for (var i = 0; i < rows.length; i++) {
+        var d = rows[i].data;
+        if (d.id !== leaveId || d.employee_id !== emp.id) continue;
         if (d.status !== 'SUBMITTED' && d.status !== 'L1_APPROVED') {
-          return { status: 'error', message: 'ไม่สามารถยกเลิกใบลาที่ ' + d.status + ' แล้ว' };
+          return { error: 'ไม่สามารถยกเลิกใบลาที่ ' + d.status + ' แล้ว' };
         }
         var year = parseInt(d.start_date.substring(0, 4), 10);
         d.status = 'CANCELLED';
@@ -1954,11 +2232,14 @@ function liffCancelLeave(lineUserId, leaveId, reason) {
         d.updated_at = _now();
         _update('LeaveRequests', rows[i].rowIndex, d);
         _adjustBalance(emp.id, d.leave_type_id, year, -d.total_days, 0);
-        _notifyCancelToApprovers(d);
-        return { status: 'success', message: 'ยกเลิกใบลาแล้ว' };
+        return { req: d };
       }
-    }
-    return { status: 'error', message: 'ไม่พบใบลา' };
+      return { error: 'ไม่พบใบลา' };
+    });
+    if (out.error) return { status: 'error', message: out.error };
+    _notifyCancelToApprovers(out.req);
+    _audit(out.req.employee_name, 'employee', 'CANCEL_LEAVE', out.req.request_no, reason || '');
+    return { status: 'success', message: 'ยกเลิกใบลาแล้ว' };
   } catch (err) {
     logError(err.toString(), 'liffCancelLeave');
     return { status: 'error', message: err.toString() };
@@ -2126,32 +2407,37 @@ function liffSubmitLeave(lineUserId, obj) {
     if (total <= 0) return { status: 'error', message: 'ช่วงวันที่เลือกไม่มีวันทำงาน' };
 
     var year = parseInt(obj.start_date.substring(0, 4), 10);
-    if (Number(type.default_quota_days) > 0) {
-      var remain = _remaining(emp.id, type.id, year);
-      if (total > remain) return { status: 'error', message: 'วันลาคงเหลือไม่พอ (เหลือ ' + remain + ' วัน)' };
-    }
     if (type.requires_attachment && (!obj.attachment_file_ids || !obj.attachment_file_ids.length)) {
       return { status: 'error', message: 'ประเภทนี้ต้องแนบเอกสาร' };
     }
 
-    var beYear = year + 543;
-    var req = {
-      id: _uuid(), request_no: _genRequestNo(beYear),
-      employee_id: emp.id,
-      employee_name: (emp.prefix || '') + emp.first_name + ' ' + emp.last_name,
-      department_id: emp.department_id || '',
-      leave_type_id: type.id, leave_type_name: type.name,
-      start_date: obj.start_date, end_date: obj.end_date,
-      start_time: startHalf === 'hourly' ? obj.start_time : '',
-      end_time: startHalf === 'hourly' ? obj.end_time : '',
-      start_half: startHalf, end_half: endHalf, total_days: total,
-      reason: obj.reason || '', contact_during_leave: obj.contact_during_leave || '',
-      attachment_file_ids: obj.attachment_file_ids || [],
-      status: 'SUBMITTED', current_level: 1, approvals: [],
-      submitted_at: _now(), decided_at: '', created_at: _now(), updated_at: _now()
-    };
-    _append('LeaveRequests', req);
-    _adjustBalance(emp.id, type.id, year, total, 0);
+    // ตรวจโควตา + ออกเลขที่ + บันทึก ต้องอยู่ในล็อกเดียวกัน กันคนยื่นพร้อมกันแล้วข้อมูลชนกัน
+    var locked = _withLock(function () {
+      if (Number(type.default_quota_days) > 0) {
+        var remain = _remaining(emp.id, type.id, year);
+        if (total > remain) return { error: 'วันลาคงเหลือไม่พอ (เหลือ ' + remain + ' วัน)' };
+      }
+      var r = {
+        id: _uuid(), request_no: _genRequestNo(year + 543),
+        employee_id: emp.id,
+        employee_name: (emp.prefix || '') + emp.first_name + ' ' + emp.last_name,
+        department_id: emp.department_id || '',
+        leave_type_id: type.id, leave_type_name: type.name,
+        start_date: obj.start_date, end_date: obj.end_date,
+        start_time: startHalf === 'hourly' ? obj.start_time : '',
+        end_time: startHalf === 'hourly' ? obj.end_time : '',
+        start_half: startHalf, end_half: endHalf, total_days: total,
+        reason: obj.reason || '', contact_during_leave: obj.contact_during_leave || '',
+        attachment_file_ids: obj.attachment_file_ids || [],
+        status: 'SUBMITTED', current_level: 1, approvals: [],
+        submitted_at: _now(), decided_at: '', created_at: _now(), updated_at: _now()
+      };
+      _append('LeaveRequests', r);
+      _adjustBalance(emp.id, type.id, year, total, 0);
+      return { req: r };
+    });
+    if (locked.error) return { status: 'error', message: locked.error };
+    var req = locked.req;
 
     _notifyApprovers(req, 1);
     _notifyEmployeeSubmit(req);
@@ -2270,13 +2556,26 @@ function _approverLineIds(req, level, cfg) {
   }
 
   // Users ที่ role ตรง + ผูก LINE (และ admin เสมอ)
-  _readAll('Users').forEach(function (r) {
-    var u = r.data;
+  var users = _readAll('Users').map(function (r) { return r.data; });
+  users.forEach(function (u) {
     if (!u.active) return;
     if (u.role === role || u.role === 'admin') {
       var lid = _userLineId(u);
       if (lid && ids.indexOf(lid) === -1) ids.push(lid);
     }
+  });
+
+  // ผู้รับมอบหมายให้อนุมัติแทน ต้องได้รับแจ้งเตือนด้วย ไม่งั้นใบลาจะค้างโดยไม่มีใครรู้
+  var today = _isoDate(new Date());
+  users.forEach(function (u) {
+    if (!u.active || !u.delegate_user_id) return;
+    if (u.role !== role && u.role !== 'admin') return;
+    if (u.delegate_from && today < u.delegate_from) return;
+    if (u.delegate_to && today > u.delegate_to) return;
+    var dele = users.filter(function (x) { return x.id === u.delegate_user_id && x.active; })[0];
+    if (!dele) return;
+    var lid = _userLineId(dele);
+    if (lid && ids.indexOf(lid) === -1) ids.push(lid);
   });
   return ids;
 }
@@ -2422,7 +2721,8 @@ var LIFF_API_WHITELIST = {
   liffGetConfig: true, getEmployeeByLineId: true, linkLineAccount: true,
   liffGetLeaveTypes: true, liffGetBalances: true, liffPreviewDays: true,
   liffUploadAttachment: true, liffSubmitLeave: true, liffGetHistory: true,
-  liffCancelLeave: true, liffGetLeaveDetail: true, liffGetHolidays: true,
+  liffCancelLeave: true, liffUpdateLeave: true, liffGetLeaveDetail: true,
+  liffGetHolidays: true,
   liffGetMyStats: true, liffGetMyProfile: true, liffUpdateProfile: true
 };
 
@@ -2476,10 +2776,10 @@ function _handlePostback(ev) {
     }
     if (q.action === 'reject') {
       // ปฏิเสธผ่าน LINE ใช้เหตุผลมาตรฐาน
-      var rr = _processDecision(actor.name, actor.role, q.id, 'reject', 'ไม่อนุมัติผ่าน LINE');
+      var rr = _processDecision(actor, q.id, 'reject', 'ไม่อนุมัติผ่าน LINE');
       _lineReply(ev.replyToken, [{ type: 'text', text: rr.message }]);
     } else {
-      var ar = _processDecision(actor.name, actor.role, q.id, 'approve', 'อนุมัติผ่าน LINE');
+      var ar = _processDecision(actor, q.id, 'approve', 'อนุมัติผ่าน LINE');
       _lineReply(ev.replyToken, [{ type: 'text', text: ar.message }]);
     }
   }
@@ -2663,7 +2963,7 @@ function bulkApproveLeave(token, ids, comment) {
   if (!user) return { status: 'error', message: 'ไม่พบผู้ใช้' };
   var results = [];
   (ids || []).forEach(function(id) {
-    var r = _processDecision(user.name, user.role, id, 'approve', comment || '');
+    var r = _processDecision(user, id, 'approve', comment || '');
     results.push({ id: id, status: r.status, message: r.message });
   });
   var ok = results.filter(function(r){ return r.status === 'success'; }).length;
@@ -2677,7 +2977,7 @@ function bulkRejectLeave(token, ids, comment) {
   if (!user) return { status: 'error', message: 'ไม่พบผู้ใช้' };
   var results = [];
   (ids || []).forEach(function(id) {
-    var r = _processDecision(user.name, user.role, id, 'reject', comment);
+    var r = _processDecision(user, id, 'reject', comment);
     results.push({ id: id, status: r.status, message: r.message });
   });
   var ok = results.filter(function(r){ return r.status === 'success'; }).length;
@@ -2801,11 +3101,18 @@ function reportData(token, filters) {
 function deleteLeaveRequest(token, id) {
   var user = _auth(token);
   if (user.role !== 'admin') return { status: 'error', message: 'เฉพาะผู้ดูแลระบบเท่านั้นที่ลบข้อมูลได้' };
-  var rows = _readAll('LeaveRequests');
-  for (var i = 0; i < rows.length; i++) {
-    if (rows[i].data.id === id) { _delete('LeaveRequests', rows[i].rowIndex); return { status: 'success', message: 'ลบข้อมูลแล้ว' }; }
-  }
-  return { status: 'error', message: 'ไม่พบรายการ' };
+  return _withLock(function () {
+    var rows = _readAll('LeaveRequests');
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].data.id === id) {
+        var d = rows[i].data;
+        _delete('LeaveRequests', rows[i].rowIndex);
+        _audit(user.name, user.role, 'DELETE_LEAVE', d.request_no, d.employee_name + ' ' + d.start_date);
+        return { status: 'success', message: 'ลบข้อมูลแล้ว' };
+      }
+    }
+    return { status: 'error', message: 'ไม่พบรายการ' };
+  });
 }
 
 /** ลบใบลาหลายรายการพร้อมกันถาวร (เฉพาะผู้ดูแลระบบ) */
@@ -2815,10 +3122,15 @@ function bulkDeleteLeaveRequests(token, ids) {
   ids = ids || [];
   var idSet = {};
   ids.forEach(function (id) { idSet[id] = true; });
-  var rows = _readAll('LeaveRequests').filter(function (r) { return idSet[r.data.id]; });
-  rows.sort(function (a, b) { return b.rowIndex - a.rowIndex; });
-  rows.forEach(function (r) { _delete('LeaveRequests', r.rowIndex); });
-  return { status: 'success', message: 'ลบแล้ว ' + rows.length + ' รายการ' };
+  return _withLock(function () {
+    var rows = _readAll('LeaveRequests').filter(function (r) { return idSet[r.data.id]; });
+    // ลบจากแถวล่างขึ้นบน ไม่งั้น rowIndex ที่เหลือจะเลื่อนหลังลบแถวแรก
+    rows.sort(function (a, b) { return b.rowIndex - a.rowIndex; });
+    var nos = rows.map(function (r) { return r.data.request_no; });
+    rows.forEach(function (r) { _delete('LeaveRequests', r.rowIndex); });
+    _audit(user.name, user.role, 'DELETE_LEAVE', nos.join(', '), 'ลบพร้อมกัน ' + rows.length + ' รายการ');
+    return { status: 'success', message: 'ลบแล้ว ' + rows.length + ' รายการ' };
+  });
 }
 
 function _csvCell(v) {

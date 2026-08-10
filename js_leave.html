@@ -264,9 +264,21 @@ function openDetail(id){
 
     var att = '';
     if(d.attachments && d.attachments.length){
-      att = '<div class="mt-2"><b>เอกสารแนบ:\x3c/b> ' + d.attachments.map(function(a){
-        return '<a href="' + a.url + '" target="_blank" class="badge text-bg-light border">เปิดไฟล์\x3c/a>';
-      }).join(' ') + '\x3c/div>';
+      att = '<hr><b>เอกสารแนบ (' + d.attachments.length + ')\x3c/b><div class="d-flex flex-wrap gap-2 mt-2">'
+        + d.attachments.map(function(a){
+            // รูปภาพแสดงพรีวิวให้กดขยาย ไฟล์อื่น (เช่น PDF) แสดงเป็นการ์ดลิงก์
+            if(a.is_image){
+              return '<a href="' + a.url + '" target="_blank" rel="noopener" title="' + _esc(a.name) + '">'
+                + '<img src="' + a.thumb + '" alt="' + _esc(a.name) + '" '
+                + 'style="width:110px;height:110px;object-fit:cover;border-radius:8px;border:1px solid var(--bs-border-color,#dee2e6)">'
+                + '\x3c/a>';
+            }
+            return '<a href="' + a.url + '" target="_blank" rel="noopener" '
+              + 'class="d-flex align-items-center gap-2 text-decoration-none border rounded-3 px-3 py-2">'
+              + '<i class="fi fi-rr-document text-danger fs-5">\x3c/i>'
+              + '<span class="small">' + _esc(a.name) + '\x3c/span>\x3c/a>';
+          }).join('')
+        + '\x3c/div>';
     }
 
     var tl = '';

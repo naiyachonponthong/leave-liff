@@ -21,9 +21,11 @@ function loadApprovalQueue(){
     r.data.forEach(function(d){
       var range = fmtDateBE(d.start_date) + (d.start_date !== d.end_date ? ' - ' + fmtDateBE(d.end_date) : '');
       if(d.start_half === 'hourly'){ range += ' <small class="text-muted">(' + (d.start_time || '') + '-' + (d.end_time || '') + ' น.)\x3c/small>'; }
+      var nAtt = (d.attachment_file_ids || []).length;
+      var clip = nAtt ? ' <i class="fi fi-rr-clip text-muted" title="มีเอกสารแนบ ' + nAtt + ' ไฟล์"></i>' : '';
       html += '<tr>'
         + '<td><input type="checkbox" class="form-check-input chk-row" value="' + d.id + '">\x3c/td>'
-        + '<td><span class="badge badge-soft">' + _esc(d.request_no) + '\x3c/span>\x3c/td>'
+        + '<td><span class="badge badge-soft">' + _esc(d.request_no) + '\x3c/span>' + clip + '\x3c/td>'
         + '<td>' + _esc(d.employee_name) + '<br><small class="text-muted">' + _esc(d.department_name || '') + '\x3c/small>\x3c/td>'
         + '<td>' + _esc(d.leave_type_name) + '\x3c/td>'
         + '<td>' + range + '\x3c/td>'
