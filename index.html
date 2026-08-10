@@ -10,8 +10,8 @@
   <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/2.6.0/uicons-regular-rounded/css/uicons-regular-rounded.css">
   <style>
     :root{
-      --brand: oklch(0.46 0.12 264); --brand-700: color-mix(in oklch, var(--brand) 82%, black);
-      --accent: oklch(0.84 0.15 84); --accent-700: color-mix(in oklch, var(--accent) 78%, black);
+      --brand: oklch(0.46 0.12 264); --brand-700: oklch(0.37 0.11 264);
+      --accent: oklch(0.84 0.15 84); --accent-700: oklch(0.68 0.14 72);
       --bg: oklch(0.97 0.012 265); --surface:#fff;
       --ink: oklch(0.28 0.03 265); --muted: oklch(0.56 0.02 265); --line: oklch(0.91 0.012 265);
     }
@@ -188,18 +188,13 @@
         <small class="text-muted" id="nlRemain"></small>
         <label class="form-label mt-2">รูปแบบ</label>
         <select class="form-select mb-2" id="nlMode">
-          <option value="full">เต็มวัน</option><option value="morning">ครึ่งวันเช้า</option><option value="afternoon">ครึ่งวันบ่าย</option><option value="hourly">รายชั่วโมง</option>
+          <option value="full">เต็มวัน</option><option value="morning">ครึ่งวันเช้า</option><option value="afternoon">ครึ่งวันบ่าย</option>
         </select>
         <div class="row g-2">
           <div class="col-6"><label class="form-label">วันเริ่ม</label><input type="date" class="form-control" id="nlStart"></div>
           <div class="col-6"><label class="form-label">วันสิ้นสุด</label><input type="date" class="form-control" id="nlEnd"></div>
         </div>
-        <div class="row g-2 mt-1 hidden" id="nlTimeRow">
-          <div class="col-6"><label class="form-label">เวลาเริ่ม</label><input type="time" class="form-control" id="nlStartTime"></div>
-          <div class="col-6"><label class="form-label">เวลาสิ้นสุด</label><input type="time" class="form-control" id="nlEndTime"></div>
-        </div>
-        <div class="day-pill my-2"><span class="small text-muted" id="nlDaysLabel">จำนวนวันลา</span><b id="nlDays">-</b></div>
-        <div class="small text-danger mb-2" id="nlDaysHint"></div>
+        <div class="day-pill my-2"><span class="small text-muted">จำนวนวันลา</span><b id="nlDays">-</b></div>
         <label class="form-label">เหตุผล</label>
         <textarea class="form-control mb-2" id="nlReason" rows="2"></textarea>
         <label class="form-label">ผู้ติดต่อระหว่างลา</label>
@@ -335,7 +330,7 @@
     $('#btnLink').on('click', doLink);
     $('#btnSubmitLeave').on('click', submitLeave);
     $('#nlType').on('change', onTypeChange);
-    $('#nlMode, #nlStart, #nlEnd, #nlStartTime, #nlEndTime').on('change', recalc);
+    $('#nlMode, #nlStart, #nlEnd').on('change', recalc);
     $('#nlAttach').on('change', uploadAttach);
     $('.tabbar button').on('click', function(){
       var t = $(this).data('tab');
@@ -360,8 +355,6 @@
   function initLiff(){
     api('liffGetConfig').then(function(c){
       LF.be = c.buddhist_era;
-      if(c.theme_brand){ document.documentElement.style.setProperty('--brand', c.theme_brand); }
-      if(c.theme_accent){ document.documentElement.style.setProperty('--accent', c.theme_accent); }
       $('#lfTitle, #splashTitle').text(c.app_name);
       if(c.logo_url){
         $('#lfLogo').attr('src', c.logo_url).removeClass('hidden'); $('#lfLogoIcon').addClass('hidden');
@@ -459,35 +452,9 @@
     var mode = $('#nlMode').val(); var start = $('#nlStart').val();
     if(mode !== 'full'){ $('#nlEnd').val(start).prop('disabled', true); } else { $('#nlEnd').prop('disabled', false); }
     var end = $('#nlEnd').val();
-
-    var isHourly = mode === 'hourly';
-    $('#nlTimeRow').toggleClass('hidden', !isHourly);
-    $('#nlDaysLabel').text(isHourly ? 'จำนวนชั่วโมงลา' : 'จำนวนวันลา');
-
-    if(!start){ $('#nlDays').text('-'); $('#nlDaysHint').text('กรุณาเลือกวันที่เริ่มลา'); return; }
-    if(!end){ $('#nlDays').text('-'); $('#nlDaysHint').text(''); return; }
-
-    var spinner = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--brand-700);border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle"></span>';
-
-    if(isHourly){
-      var st = $('#nlStartTime').val(), et = $('#nlEndTime').val();
-      if(!st || !et){ $('#nlDays').text('-'); $('#nlDaysHint').text('กรุณาระบุเวลาเริ่มและเวลาสิ้นสุด'); return; }
-      var toMin = function(t){ var p = t.split(':'); return (+p[0]) * 60 + (+p[1]); };
-      var mins = toMin(et) - toMin(st);
-      if(mins <= 0){ $('#nlDays').text('-'); $('#nlDaysHint').text('เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม'); return; }
-      var hrs = Math.round((mins / 60) * 100) / 100;
-      $('#nlDaysHint').text('');
-      $('#nlDays').html(spinner);
-      api('liffPreviewDays', start, end, 'hourly', 'hourly', st, et).then(function(r){
-        if(r.days > 0){ $('#nlDays').text(hrs + ' ชั่วโมง'); $('#nlDaysHint').text(''); }
-        else { $('#nlDays').text('-'); $('#nlDaysHint').text('วันที่เลือกไม่ใช่วันทำงาน (วันหยุด/สุดสัปดาห์)'); }
-      });
-      return;
-    }
-
-    $('#nlDaysHint').text('');
+    if(!start || !end){ $('#nlDays').text('-'); return; }
     var sh = mode !== 'full' ? mode : 'full';
-    $('#nlDays').html(spinner);
+    $('#nlDays').html('<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--brand-700);border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle"></span>');
     api('liffPreviewDays', start, end, sh, sh).then(function(r){ $('#nlDays').text(r.days); });
   }
 
@@ -518,15 +485,9 @@
     var mode = $('#nlMode').val(); var sh = mode !== 'full' ? mode : 'full';
     var tid = $('#nlType').val();
     if(!tid || !$('#nlStart').val() || !$('#nlEnd').val()){ toast('error','กรอกข้อมูลให้ครบ'); return; }
-    if(mode === 'hourly' && (!$('#nlStartTime').val() || !$('#nlEndTime').val())){
-      toast('error','กรุณาระบุเวลาเริ่มและเวลาสิ้นสุด'); return;
-    }
     var obj = {
       leave_type_id: tid, start_date: $('#nlStart').val(), end_date: $('#nlEnd').val(),
-      start_half: sh, end_half: sh,
-      start_time: mode === 'hourly' ? $('#nlStartTime').val() : '',
-      end_time: mode === 'hourly' ? $('#nlEndTime').val() : '',
-      reason: $('#nlReason').val().trim(),
+      start_half: sh, end_half: sh, reason: $('#nlReason').val().trim(),
       contact_during_leave: $('#nlContact').val().trim(),
       attachment_file_ids: $('#nlAttachId').val() ? [$('#nlAttachId').val()] : []
     };
@@ -536,8 +497,7 @@
       if(r.status === 'success'){
         Swal.fire({ icon:'success', title:'ยื่นใบลาแล้ว', text:r.request_no, timer:1800, showConfirmButton:false });
         $('#nlReason').val(''); $('#nlContact').val(''); $('#nlAttachId').val(''); $('#nlAttach').val('');
-        $('#nlAttachStatus').html(''); $('#uploadBar').hide(); $('#nlDays').text('-'); $('#nlDaysHint').text('');
-        $('#nlStartTime').val(''); $('#nlEndTime').val(''); $('#nlTimeRow').addClass('hidden'); $('#nlDaysLabel').text('จำนวนวันลา');
+        $('#nlAttachStatus').html(''); $('#uploadBar').hide(); $('#nlDays').text('-');
         loadBalanceMap(onTypeChange);
       } else { toast('error', r.message); }
     }).catch(function(){ setBtnLoading('#btnSubmitLeave', false); toast('error','ส่งใบลาไม่สำเร็จ'); });
@@ -558,7 +518,6 @@
     list.forEach(function(d){
       var st = ST[d.status] || [d.status,'#94a3b8'];
       var range = fmtBE(d.start_date) + (d.start_date !== d.end_date ? ' - ' + fmtBE(d.end_date) : '');
-      if(d.start_half === 'hourly'){ range += ' (' + (d.start_time || '') + '-' + (d.end_time || '') + ' น.)'; }
       html += '<div class="hist-card" style="cursor:pointer" onclick="showDetail(\'' + d.id + '\')">'
         + '<div class="d-flex justify-content-between align-items-start">'
         + '<div><b>' + esc(d.leave_type_name) + '\x3c/b><div class="no">' + esc(d.request_no) + '\x3c/div>\x3c/div>'
@@ -632,7 +591,7 @@
   function buildDetailHtml(d, slim){
     var st = ST[d.status] || [d.status,'#94a3b8'];
     var range = fmtBE(d.start_date) + (d.start_date !== d.end_date ? ' - ' + fmtBE(d.end_date) : '');
-    var modeLabel = d.start_half === 'morning' ? 'ครึ่งวันเช้า' : (d.start_half === 'afternoon' ? 'ครึ่งวันบ่าย' : (d.start_half === 'hourly' ? 'รายชั่วโมง (' + (d.start_time || '') + '-' + (d.end_time || '') + ' น.)' : 'เต็มวัน'));
+    var modeLabel = d.start_half === 'morning' ? 'ครึ่งวันเช้า' : (d.start_half === 'afternoon' ? 'ครึ่งวันบ่าย' : 'เต็มวัน');
     var h = '<div class="d-flex justify-content-between align-items-center mb-2">'
       + '<b style="font-size:1rem">' + esc(d.leave_type_name) + '\x3c/b>'
       + '<span class="badge-st" style="background:' + st[1] + '22;color:' + st[1] + '">' + st[0] + '\x3c/span>\x3c/div>'
