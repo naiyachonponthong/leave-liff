@@ -76,7 +76,7 @@ function renderCalendar(r, be){
     if(isHoliday) html += '<div style="font-size:.65rem;color:#f59e0b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+_esc(holidays[dateStr])+'">🎌 '+_esc(holidays[dateStr])+'</div>';
     leaves.slice(0,3).forEach(function(l){
       var c = empColor[l.employee_name] || '#64748b';
-      html += '<div style="font-size:.65rem;background:'+c+'22;color:'+c+';border-left:2px solid '+c+';padding:1px 4px;border-radius:3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+_esc(l.employee_name)+' ('+_esc(l.leave_type_name)+')">'
+      html += '<div class="cal-leave" data-id="'+_esc(l.id)+'" style="font-size:.65rem;background:'+c+'22;color:'+c+';border-left:2px solid '+c+';padding:1px 4px;border-radius:3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer" title="'+_esc(l.employee_name)+' ('+_esc(l.leave_type_name)+')">'
         + _esc(l.employee_name) + '</div>';
     });
     if(leaves.length > 3) html += '<div class="cal-more" data-date="' + dateStr + '" style="font-size:.65rem;color:#64748b;margin-top:1px;cursor:pointer;text-decoration:underline">+' + (leaves.length-3) + ' เพิ่มเติม</div>';
@@ -88,20 +88,48 @@ function renderCalendar(r, be){
   html += '</div>';
   $('#calGrid').html(html);
 
+  function openLeaveDetail(id){
+    var l = r.leaves.filter(function(x){ return x.id === id; })[0];
+    if(!l) return;
+    var range = fmtDateBE(l.start_date) + (l.start_date !== l.end_date ? ' - ' + fmtDateBE(l.end_date) : '');
+    Swal.fire({
+      title: l.employee_name,
+      html: '<div style="text-align:left">'
+        + '<div class="mb-2"><span class="badge badge-soft">' + _esc(l.request_no) + '</span></div>'
+        + '<div class="mb-1"><b>ประเภทการลา:</b> ' + _esc(l.leave_type_name) + '</div>'
+        + '<div class="mb-1"><b>ช่วงวันลา:</b> ' + range + '</div>'
+        + '<div><b>จำนวนวัน:</b> ' + l.total_days + ' วัน</div>'
+        + '</div>',
+      confirmButtonColor: brandColor()
+    });
+  }
+
+  $('#calGrid').off('click', '.cal-leave').on('click', '.cal-leave', function(e){
+    e.stopPropagation();
+    openLeaveDetail($(this).data('id'));
+  });
+
   $('.cal-more').off('click').on('click', function(e){
     e.stopPropagation();
     var d = $(this).data('date');
     var list = dayLeaves[d] || [];
     var rows = list.map(function(l){
       var c = empColor[l.employee_name] || '#64748b';
-      return '<div style="text-align:left;padding:7px 2px;border-bottom:1px solid #eee">'
+      return '<div class="cal-leave-item" data-id="' + _esc(l.id) + '" style="text-align:left;padding:7px 2px;border-bottom:1px solid #eee;cursor:pointer">'
         + '<b style="color:' + c + '">' + _esc(l.employee_name) + '</b><br>'
         + '<small class="text-muted">' + _esc(l.leave_type_name) + '</small></div>';
     }).join('');
     Swal.fire({
       title: fmtDateBE(d),
       html: '<div style="max-height:320px;overflow:auto">' + rows + '</div>',
-      confirmButtonColor: brandColor()
+      confirmButtonColor: brandColor(),
+      didOpen: function(popup){
+        $(popup).find('.cal-leave-item').on('click', function(){
+          var id = $(this).data('id');
+          Swal.close();
+          setTimeout(function(){ openLeaveDetail(id); }, 200);
+        });
+      }
     });
   });
 
