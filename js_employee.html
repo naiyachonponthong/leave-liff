@@ -19,6 +19,34 @@ $(document).ready(function(){
   $('#btnImportCSV').on('click', function(){ $('#empCSVFile').trigger('click'); });
   $('#empCSVFile').on('change', handleCSVFile);
   $('#btnConfirmCSV').on('click', doImportCSV);
+  $('#btnSavePromote').on('click', savePromote);
+  $('#btnTogglePromoPw').on('click', function(){
+    var inp = $('#promoPassword');
+    var isText = inp.attr('type') === 'text';
+    inp.attr('type', isText ? 'password' : 'text');
+    $(this).find('i').attr('class', isText ? 'fi fi-rr-eye' : 'fi fi-rr-eye-crossed');
+  });
+  $('#btnEmpUnlink').on('click', function(){
+    var $btn = $(this);
+    var id = $btn.data('id'), name = $btn.data('name');
+    Swal.fire({ title:'ปลดการเชื่อมต่อ LINE?', text: name, icon:'warning',
+      showCancelButton:true, confirmButtonText:'ปลด', cancelButtonText:'ยกเลิก', confirmButtonColor:'#dc3545' })
+    .then(function(res){
+      if(!res.isConfirmed) return;
+      api('unlinkLine', APP.token, id).then(function(r){
+        toast(r.status === 'success' ? 'success' : 'error', r.message);
+        if(r.status === 'success'){
+          $('#empLineBadge').text('ยังไม่ผูก').attr('class', 'badge badge-soft ms-1');
+          $('#empLineUid').text('').addClass('d-none');
+          $btn.addClass('d-none');
+        }
+        loadEmp();
+      });
+    });
+  });
+  $('#empDept').on('change', function(){
+    $('#empDeptOtherBox').toggleClass('d-none', $(this).val() !== '__other__');
+  });
 });
 
 window.PAGE_HOOKS.employee = function(){ loadDeptsForEmp(); loadEmp(); };
@@ -32,6 +60,7 @@ function loadDeptsForEmp(){
       opt += '<option value="' + d.id + '">' + _esc(d.name) + '\x3c/option>';
       fopt += '<option value="' + d.id + '">' + _esc(d.name) + '\x3c/option>';
     });
+    opt += '<option value="__other__">อื่นๆ (พิมพ์เอง)\x3c/option>';
     $('#empDept').html(opt);
     $('#empFilterDept').html(fopt);
   });
@@ -55,14 +84,15 @@ function renderEmp(){
     if(fl === '1' && !e.line_linked) return false;
     if(fl === '0' && e.line_linked) return false;
     if(q){
-      var hay = (e.full_name + ' ' + e.emp_code + ' ' + (e.position || '') + ' ' + (e.nickname || '')).toLowerCase();
+      var hay = (e.full_name + ' ' + e.emp_code + ' ' + (e.nickname || '')).toLowerCase();
       if(hay.indexOf(q) === -1) return false;
     }
     return true;
   });
 
+  var isAdmin = APP.user && APP.user.role === 'admin';
   var html = '';
-  if(!rows.length){ html = '<tr><td colspan="7" class="text-center text-muted py-4">ไม่พบพนักงาน\x3c/td>\x3c/tr>'; }
+  if(!rows.length){ html = '<tr><td colspan="6" class="text-center text-muted py-4">ไม่พบพนักงาน\x3c/td>\x3c/tr>'; }
   rows.forEach(function(e){
     var avatar = e.photo_url
       ? '<img src="' + e.photo_url + '" class="emp-avatar">'
@@ -70,17 +100,20 @@ function renderEmp(){
     var line = e.line_linked
       ? '<span class="badge text-bg-success"><i class="fi fi-rr-check">\x3c/i> ผูกแล้ว\x3c/span>'
       : '<span class="badge badge-soft">ยังไม่ผูก\x3c/span>';
+    var roleBadge = e.system_role
+      ? '<br><span class="badge ' + (ROLE_COLORS[e.system_role] || 'text-bg-secondary') + ' mt-1">' + _esc(ROLE_LABELS[e.system_role] || e.system_role) + '\x3c/span>'
+      : '';
     html += '<tr>'
       + '<td><div class="d-flex align-items-center gap-2">' + avatar
-        + '<div><b>' + _esc(e.full_name) + '\x3c/b>' + (e.nickname ? '<br><small class="text-muted">' + _esc(e.nickname) + '\x3c/small>' : '') + '\x3c/div>\x3c/div>\x3c/td>'
+        + '<div><b>' + _esc(e.full_name) + '\x3c/b>' + (e.nickname ? '<br><small class="text-muted">' + _esc(e.nickname) + '\x3c/small>' : '') + roleBadge + '\x3c/div>\x3c/div>\x3c/td>'
       + '<td><span class="badge badge-soft">' + _esc(e.emp_code || '-') + '\x3c/span>\x3c/td>'
       + '<td>' + _esc(e.department_name || '-') + '\x3c/td>'
-      + '<td>' + _esc(e.position || '-') + '\x3c/td>'
       + '<td class="text-center">' + line + '\x3c/td>'
       + '<td class="text-center">' + (e.status === 'active' ? '<span class="badge text-bg-success">ทำงาน\x3c/span>' : '<span class="badge text-bg-secondary">พ้นสภาพ\x3c/span>') + '\x3c/td>'
       + '<td class="text-end text-nowrap">'
         + '<button class="btn btn-sm btn-ghost b-bal" data-id="' + e.id + '" title="โควตา"><i class="fi fi-rr-calendar-clock">\x3c/i>\x3c/button>'
         + (e.line_linked ? '<button class="btn btn-sm btn-ghost text-warning b-unlink" data-id="' + e.id + '" title="ปลด LINE"><i class="fi fi-rr-link-slash">\x3c/i>\x3c/button>' : '')
+        + (isAdmin ? '<button class="btn btn-sm btn-ghost text-primary b-promote" data-id="' + e.id + '" title="' + (e.system_role ? 'แก้ไขบทบาทผู้ใช้ระบบ' : 'ตั้งเป็นผู้ใช้ระบบ') + '"><i class="fi fi-rr-shield-check">\x3c/i>\x3c/button>' : '')
         + '<button class="btn btn-sm btn-ghost b-eedit" data-id="' + e.id + '"><i class="fi fi-rr-pencil">\x3c/i>\x3c/button>'
         + '<button class="btn btn-sm btn-ghost text-danger b-edel" data-id="' + e.id + '"><i class="fi fi-rr-trash">\x3c/i>\x3c/button>'
       + '\x3c/td>\x3c/tr>';
@@ -91,6 +124,7 @@ function renderEmp(){
   $('.b-edel').off('click').on('click', function(){ delEmp(_find($(this).data('id'))); });
   $('.b-bal').off('click').on('click', function(){ openBalance(_find($(this).data('id'))); });
   $('.b-unlink').off('click').on('click', function(){ unlinkEmp(_find($(this).data('id'))); });
+  $('.b-promote').off('click').on('click', function(){ openPromote(_find($(this).data('id'))); });
 }
 
 function _find(id){ return EMP.list.filter(function(x){ return x.id === id; })[0]; }
@@ -105,14 +139,30 @@ function openEmp(e){
   $('#empCode').val(e ? e.emp_code : '');
   $('#empType').val(e ? (e.employment_type || 'ประจำ') : 'ประจำ');
   $('#empDept').val(e ? (e.department_id || '') : '');
-  $('#empPos').val(e ? e.position : '');
+  $('#empDeptOther').val('');
+  $('#empDeptOtherBox').addClass('d-none');
   $('#empPhone').val(e ? e.phone : '');
   $('#empEmail').val(e ? e.email : '');
-  $('#empStart').val(e ? e.start_date : '');
   $('#empActive').prop('checked', e ? e.status === 'active' : true);
   $('#empPhotoId').val(e ? (e.photo_file_id || '') : '');
   if(e && e.photo_url){ $('#empPhotoPreview').html('<img src="' + e.photo_url + '">'); }
   else { $('#empPhotoPreview').html('<i class="fi fi-rr-user">\x3c/i>'); }
+
+  if(e){
+    $('#empLineBox').removeClass('d-none');
+    if(e.line_linked){
+      $('#empLineBadge').text('ผูกแล้ว').attr('class', 'badge text-bg-success ms-1');
+      $('#empLineUid').text(e.line_user_id || '').toggleClass('d-none', !e.line_user_id);
+      $('#btnEmpUnlink').removeClass('d-none').data('id', e.id).data('name', e.full_name);
+    } else {
+      $('#empLineBadge').text('ยังไม่ผูก').attr('class', 'badge badge-soft ms-1');
+      $('#empLineUid').text('').addClass('d-none');
+      $('#btnEmpUnlink').addClass('d-none');
+    }
+  } else {
+    $('#empLineBox').addClass('d-none');
+  }
+
   new bootstrap.Modal('#modalEmp').show();
 }
 
@@ -146,19 +196,34 @@ function saveEmp(){
     emp_code: $('#empCode').val().trim(),
     employment_type: $('#empType').val(),
     department_id: $('#empDept').val(),
-    position: $('#empPos').val().trim(),
     phone: $('#empPhone').val().trim(),
     email: $('#empEmail').val().trim(),
-    start_date: $('#empStart').val(),
     photo_file_id: $('#empPhotoId').val(),
     status: $('#empActive').is(':checked') ? 'active' : 'inactive'
   };
   if(!obj.first_name || !obj.last_name){ toast('error','กรุณากรอกชื่อ-นามสกุล'); return; }
+  if(obj.department_id === '__other__' && !$('#empDeptOther').val().trim()){
+    toast('error','กรุณาระบุชื่อแผนก'); return;
+  }
+
   var btn = $('#btnSaveEmp'); btn.prop('disabled', true);
-  api('saveEmployee', APP.token, obj).then(function(r){
-    btn.prop('disabled', false);
-    toast(r.status === 'success' ? 'success' : 'error', r.message);
-    if(r.status === 'success'){ bootstrap.Modal.getInstance(document.getElementById('modalEmp')).hide(); loadEmp(); }
+
+  var resolveDept = obj.department_id === '__other__'
+    ? api('getOrCreateDepartment', APP.token, $('#empDeptOther').val().trim())
+    : Promise.resolve({ status: 'success', id: obj.department_id });
+
+  resolveDept.then(function(dr){
+    if(dr.status !== 'success'){ btn.prop('disabled', false); toast('error', dr.message); return; }
+    obj.department_id = dr.id;
+    api('saveEmployee', APP.token, obj).then(function(r){
+      btn.prop('disabled', false);
+      toast(r.status === 'success' ? 'success' : 'error', r.message);
+      if(r.status === 'success'){
+        bootstrap.Modal.getInstance(document.getElementById('modalEmp')).hide();
+        loadDeptsForEmp();
+        loadEmp();
+      }
+    });
   });
 }
 
@@ -182,6 +247,46 @@ function unlinkEmp(e){
   });
 }
 
+/* ---------- PROMOTE TO SYSTEM USER ---------- */
+function openPromote(e){
+  $('#promoteModalTitle').text(e.system_role ? 'แก้ไขบทบาทผู้ใช้ระบบ' : 'ตั้งเป็นผู้ใช้ระบบ');
+  $('#promoEmpId').val(e.id);
+  $('#promoEmpName').text(e.full_name);
+  $('#promoRole').val(e.system_role || 'supervisor');
+  $('#promoUsername').val(e.system_username || (e.emp_code || '').toLowerCase());
+  $('#promoPassword').val('').attr('type', 'password');
+  $('#btnTogglePromoPw i').attr('class', 'fi fi-rr-eye');
+  $('#promoActive').prop('checked', true);
+  $('#promoPwLabel').text(e.system_role ? 'รหัสผ่านใหม่' : 'รหัสผ่าน');
+  $('#promoPwHint').toggle(!!e.system_role);
+  new bootstrap.Modal('#modalPromote').show();
+}
+
+function savePromote(){
+  var empId = $('#promoEmpId').val();
+  var role = $('#promoRole').val();
+  var username = $('#promoUsername').val().trim().toLowerCase();
+  var password = $('#promoPassword').val();
+  var active = $('#promoActive').is(':checked');
+  var isEdit = !!_find(empId).system_role;
+
+  if(!username){ toast('error','กรุณาระบุชื่อผู้ใช้'); return; }
+  if(!isEdit && !password){ toast('error','กรุณาระบุรหัสผ่าน'); return; }
+
+  var payload = { employee_id: empId, role: role, username: username, active: active };
+  if(password) payload.password = password;
+
+  setBtnLoading('#btnSavePromote', true);
+  api('promoteEmployeeToUser', APP.token, payload).then(function(r){
+    setBtnLoading('#btnSavePromote', false);
+    toast(r.status === 'success' ? 'success' : 'error', r.message);
+    if(r.status === 'success'){
+      bootstrap.Modal.getInstance(document.getElementById('modalPromote')).hide();
+      loadEmp();
+    }
+  }).catch(function(){ setBtnLoading('#btnSavePromote', false); });
+}
+
 /* ---------- BALANCES ---------- */
 function openBalance(e){
   $('#balEmpId').val(e.id);
@@ -195,8 +300,11 @@ function loadBalances(empId){
     var html = '';
     if(!r.data.length){ html = '<tr><td colspan="5" class="text-center text-muted py-3">ยังไม่มีโควตา กด "สร้างโควตาปีนี้"\x3c/td>\x3c/tr>'; }
     r.data.forEach(function(b){
+      var hint = b.quota_unit === 'hours'
+        ? '<br><small class="text-muted">คิดเป็นชั่วโมง (1 วัน = ' + APP.hoursPerDay + ' ชม. — ค่าคงเหลือ ' + (Math.round(b.remaining * APP.hoursPerDay * 100) / 100) + ' ชม.)\x3c/small>'
+        : '';
       html += '<tr data-type="' + b.leave_type_id + '">'
-        + '<td><span class="lt-color" style="background:' + b.color + '">\x3c/span>' + _esc(b.leave_type_name) + '\x3c/td>'
+        + '<td><span class="lt-color" style="background:' + b.color + '">\x3c/span>' + _esc(b.leave_type_name) + hint + '\x3c/td>'
         + '<td class="text-center" style="width:90px"><input type="number" class="form-control form-control-sm bal-ent" value="' + b.entitled + '">\x3c/td>'
         + '<td class="text-center" style="width:90px"><input type="number" class="form-control form-control-sm bal-carry" value="' + b.carried_over + '">\x3c/td>'
         + '<td class="text-center">' + b.used + '\x3c/td>'

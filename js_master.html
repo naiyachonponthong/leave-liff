@@ -33,25 +33,39 @@ $(document).ready(function(){
   $('#btnSaveDept').on('click', saveDept);
   $('#btnSaveHoliday').on('click', saveHoliday);
   $('#btnSeedHoliday').on('click', seedHolidays);
+
+  $('#ltQuotaUnit').on('change', function(){
+    var isHours = $(this).val() === 'hours';
+    $('#ltQuotaDaysBox').toggleClass('d-none', isHours);
+    $('#ltQuotaHoursBox').toggleClass('d-none', !isHours);
+  });
+  $('#ltQuotaHours').on('input', function(){
+    $('#ltQuotaHoursYear').text(Math.round((Number($(this).val()) || 0) * 52 * 100) / 100);
+  });
 });
 
 window.PAGE_HOOKS.master = function(){ loadLeaveTypes(); loadDepts(); loadHolidays(); };
 
 /* ---------- LEAVE TYPES ---------- */
+function fmtQuota(t){
+  if(!t.default_quota_days) return 'ไม่จำกัด';
+  if(t.quota_unit === 'hours') return (t.quota_hours_per_week || 0) + ' ชม./สัปดาห์';
+  return t.default_quota_days + ' วัน';
+}
+
 function loadLeaveTypes(){
   tblSkel('#tblLeaveType', 5);
   api('getLeaveTypes', APP.token).then(function(r){
     if(r.status !== 'success') return;
     MASTER.leaveTypes = r.data;
     var html = '';
-    if(!r.data.length){ html = '<tr><td colspan="7" class="text-center text-muted py-4">ยังไม่มีข้อมูล\x3c/td>\x3c/tr>'; }
+    if(!r.data.length){ html = '<tr><td colspan="6" class="text-center text-muted py-4">ยังไม่มีข้อมูล\x3c/td>\x3c/tr>'; }
     r.data.forEach(function(t){
       html += '<tr>'
         + '<td><span class="lt-color" style="background:' + _esc(t.color) + '">\x3c/span>' + _esc(t.name) + '\x3c/td>'
         + '<td><span class="badge badge-soft">' + _esc(t.code || '-') + '\x3c/span>\x3c/td>'
-        + '<td class="text-center">' + (t.default_quota_days ? t.default_quota_days : 'ไม่จำกัด') + '\x3c/td>'
+        + '<td class="text-center">' + fmtQuota(t) + '\x3c/td>'
         + '<td class="text-center">' + (t.requires_attachment ? '<i class="fi fi-rr-check text-success">\x3c/i>' : '-') + '\x3c/td>'
-        + '<td class="text-center">' + (t.allow_half_day ? '<i class="fi fi-rr-check text-success">\x3c/i>' : '-') + '\x3c/td>'
         + '<td class="text-center">' + statusBadge(t.active) + '\x3c/td>'
         + '<td class="text-end">' + rowBtns('LeaveType', t.id) + '\x3c/td>'
         + '\x3c/tr>';
@@ -66,10 +80,15 @@ function openLeaveType(item){
   $('#ltTitle').text(item ? 'แก้ไขประเภทการลา' : 'เพิ่มประเภทการลา');
   $('#ltName').val(item ? item.name : '');
   $('#ltCode').val(item ? item.code : '');
+  var unit = item && item.quota_unit === 'hours' ? 'hours' : 'days';
+  $('#ltQuotaUnit').val(unit);
   $('#ltQuota').val(item ? item.default_quota_days : 0);
+  $('#ltQuotaHours').val(item ? (item.quota_hours_per_week || 0) : 0);
+  $('#ltQuotaHoursYear').text(item ? Math.round((item.quota_hours_per_week || 0) * 52 * 100) / 100 : 0);
+  $('#ltQuotaDaysBox').toggleClass('d-none', unit === 'hours');
+  $('#ltQuotaHoursBox').toggleClass('d-none', unit !== 'hours');
   $('#ltColor').val(item ? (item.color || '#3b3f9e') : '#3b3f9e');
   $('#ltAttach').prop('checked', item ? !!item.requires_attachment : false);
-  $('#ltHalf').prop('checked', item ? item.allow_half_day !== false : true);
   $('#ltActive').prop('checked', item ? item.active !== false : true);
   $('#ltSeniority').val(item && item.seniority_tiers ? JSON.stringify(item.seniority_tiers) : '[]');
   new bootstrap.Modal('#modalLeaveType').show();
@@ -80,10 +99,11 @@ function saveLeaveType(){
     id: $('#ltId').val() || undefined,
     name: $('#ltName').val().trim(),
     code: $('#ltCode').val().trim(),
+    quota_unit: $('#ltQuotaUnit').val(),
     default_quota_days: $('#ltQuota').val(),
+    quota_hours_per_week: $('#ltQuotaHours').val(),
     color: $('#ltColor').val(),
     requires_attachment: $('#ltAttach').is(':checked'),
-    allow_half_day: $('#ltHalf').is(':checked'),
     active: $('#ltActive').is(':checked')
   };
   try { obj.seniority_tiers = JSON.parse($('#ltSeniority').val() || '[]'); } catch(e){ obj.seniority_tiers = []; }
@@ -114,7 +134,7 @@ function loadDepts(){
       html += '<tr>'
         + '<td>' + _esc(d.name) + '\x3c/td>'
         + '<td><span class="badge badge-soft">' + _esc(d.code || '-') + '\x3c/span>\x3c/td>'
-        + '<td class="text-muted">' + _esc(d.head_user_name || 'ยังไม่กำหนด') + '\x3c/td>'
+        + '<td class="text-muted">' + _esc(d.head_user_names || 'ยังไม่กำหนด') + '\x3c/td>'
         + '<td class="text-center">' + statusBadge(d.active) + '\x3c/td>'
         + '<td class="text-end">' + rowBtns('Dept', d.id) + '\x3c/td>'
         + '\x3c/tr>';
@@ -226,7 +246,7 @@ function seedHolidays(){
     title: 'เพิ่มวันหยุดราชการ?',
     text: 'เพิ่มวันหยุดวันที่ตายตัวของปี ' + _toBE(MASTER.year) + ' (วันพระ/จันทรคติต้องเพิ่มเอง)',
     icon: 'question', showCancelButton: true, confirmButtonText: 'เพิ่มเลย', cancelButtonText: 'ยกเลิก',
-    confirmButtonColor: '#3b3f9e'
+    confirmButtonColor: brandColor()
   }).then(function(res){
     if(res.isConfirmed){
       api('seedThaiHolidays', APP.token, MASTER.year).then(function(r){

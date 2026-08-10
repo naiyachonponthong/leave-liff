@@ -79,7 +79,7 @@ function renderCalendar(r, be){
       html += '<div style="font-size:.65rem;background:'+c+'22;color:'+c+';border-left:2px solid '+c+';padding:1px 4px;border-radius:3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+_esc(l.employee_name)+' ('+_esc(l.leave_type_name)+')">'
         + _esc(l.employee_name) + '</div>';
     });
-    if(leaves.length > 3) html += '<div style="font-size:.65rem;color:#64748b;margin-top:1px">+' + (leaves.length-3) + ' เพิ่มเติม</div>';
+    if(leaves.length > 3) html += '<div class="cal-more" data-date="' + dateStr + '" style="font-size:.65rem;color:#64748b;margin-top:1px;cursor:pointer;text-decoration:underline">+' + (leaves.length-3) + ' เพิ่มเติม</div>';
     html += '</div>';
   }
 
@@ -87,6 +87,23 @@ function renderCalendar(r, be){
   if(used > 0) for(var k=used; k<7; k++) html += '<div style="border:1px solid var(--bs-border-color,#dee2e6);border-top:0;border-left:0;min-height:80px;background:#f8fafc"></div>';
   html += '</div>';
   $('#calGrid').html(html);
+
+  $('.cal-more').off('click').on('click', function(e){
+    e.stopPropagation();
+    var d = $(this).data('date');
+    var list = dayLeaves[d] || [];
+    var rows = list.map(function(l){
+      var c = empColor[l.employee_name] || '#64748b';
+      return '<div style="text-align:left;padding:7px 2px;border-bottom:1px solid #eee">'
+        + '<b style="color:' + c + '">' + _esc(l.employee_name) + '</b><br>'
+        + '<small class="text-muted">' + _esc(l.leave_type_name) + '</small></div>';
+    }).join('');
+    Swal.fire({
+      title: fmtDateBE(d),
+      html: '<div style="max-height:320px;overflow:auto">' + rows + '</div>',
+      confirmButtonColor: brandColor()
+    });
+  });
 
   // Legend
   var names = Object.keys(empColor);

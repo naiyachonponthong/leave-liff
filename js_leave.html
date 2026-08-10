@@ -15,7 +15,20 @@ function lvStatusBadge(s){
   var x = LV_STATUS[s] || { t:s, c:'text-bg-secondary' };
   return '<span class="badge ' + x.c + '">' + x.t + '\x3c/span>';
 }
-function lvModeText(m){ return m === 'morning' ? 'ครึ่งเช้า' : (m === 'afternoon' ? 'ครึ่งบ่าย' : ''); }
+function lvModeText(m){ return m === 'morning' ? 'ครึ่งเช้า' : (m === 'afternoon' ? 'ครึ่งบ่าย' : (m === 'hourly' ? 'รายชั่วโมง' : '')); }
+
+function _minutesBetween(startTime, endTime){
+  var toMin = function(t){ var p = t.split(':'); return (+p[0]) * 60 + (+p[1]); };
+  return toMin(endTime) - toMin(startTime);
+}
+
+function fmtLeaveAmount(d){
+  if(d.start_half === 'hourly' && d.start_time && d.end_time){
+    var hrs = Math.round((_minutesBetween(d.start_time, d.end_time) / 60) * 100) / 100;
+    return hrs + ' ชั่วโมง';
+  }
+  return d.total_days + ' วัน';
+}
 
 $(document).ready(function(){
   $('#btnAddLeave').on('click', openLeave);
@@ -33,7 +46,7 @@ $(document).ready(function(){
     if($.fn.select2 && $('#lvEmp').data('select2')){ $('#lvEmp').select2('destroy'); }
   });
   $('#lvType').on('change', onTypeChange);
-  $('#lvMode, #lvStart, #lvEnd').on('change', recalcDays);
+  $('#lvMode, #lvStart, #lvEnd, #lvStartTime, #lvEndTime').on('change', recalcDays);
   $('#lvAttach').on('change', handleAttach);
   $('#btnSaveLeave').on('click', submitLeave);
 });
@@ -71,13 +84,13 @@ function renderLeave(){
   if(!rows.length){ html = '<tr><td colspan="7" class="text-center text-muted py-4">ไม่พบใบลา\x3c/td>\x3c/tr>'; }
   rows.forEach(function(d){
     var range = fmtDateBE(d.start_date) + (d.start_date !== d.end_date ? ' - ' + fmtDateBE(d.end_date) : '');
-    var half = lvModeText(d.start_half);
+    var half = d.start_half === 'hourly' ? ((d.start_time || '') + '-' + (d.end_time || '') + ' น.') : lvModeText(d.start_half);
     html += '<tr>'
       + '<td><span class="badge badge-soft">' + _esc(d.request_no) + '\x3c/span>\x3c/td>'
       + '<td>' + _esc(d.employee_name) + '<br><small class="text-muted">' + _esc(d.department_name || '') + '\x3c/small>\x3c/td>'
       + '<td>' + _esc(d.leave_type_name) + '\x3c/td>'
       + '<td>' + range + (half ? ' <small class="text-muted">(' + half + ')\x3c/small>' : '') + '\x3c/td>'
-      + '<td class="text-center">' + d.total_days + '\x3c/td>'
+      + '<td class="text-center">' + fmtLeaveAmount(d) + '\x3c/td>'
       + '<td class="text-center">' + lvStatusBadge(d.status) + '\x3c/td>'
       + '<td class="text-end"><button class="btn btn-sm btn-ghost b-view" data-id="' + d.id + '"><i class="fi fi-rr-eye">\x3c/i>\x3c/button>\x3c/td>'
       + '\x3c/tr>';
@@ -90,7 +103,10 @@ function renderLeave(){
 function openLeave(){
   $('#lvEmp').val(''); $('#lvType').val(''); $('#lvMode').val('full');
   $('#lvStart').val(''); $('#lvEnd').val(''); $('#lvReason').val(''); $('#lvContact').val('');
-  $('#lvDays').text('-'); $('#lvRemain').text(''); $('#lvAttachId').val(''); $('#lvAttach').val('');
+  $('#lvStartTime').val(''); $('#lvEndTime').val('');
+  $('#lvTimeBox1, #lvTimeBox2').addClass('d-none');
+  $('#lvDaysLabel').text('จำนวนวันลา');
+  $('#lvDays').text('-'); $('#lvDaysHint').text(''); $('#lvRemain').text(''); $('#lvAttachId').val(''); $('#lvAttach').val('');
   $('#lvAttachStatus').text(''); $('#lvAttachReq').text('');
   LEAVE.balances = {};
 
@@ -124,7 +140,12 @@ function onTypeChange(){
   var t = LEAVE.types.filter(function(x){ return x.id === tid; })[0];
   if(t && t.requires_attachment){ $('#lvAttachReq').text('(ต้องแนบ)'); } else { $('#lvAttachReq').text(''); }
   if(tid && LEAVE.balances[tid] !== undefined){
-    $('#lvRemain').text('คงเหลือ ' + LEAVE.balances[tid] + ' วัน');
+    if(t && t.quota_unit === 'hours'){
+      var hrs = Math.round(LEAVE.balances[tid] * APP.hoursPerDay * 100) / 100;
+      $('#lvRemain').text('คงเหลือ ' + hrs + ' ชั่วโมง');
+    } else {
+      $('#lvRemain').text('คงเหลือ ' + LEAVE.balances[tid] + ' วัน');
+    }
   } else if(t && Number(t.default_quota_days) === 0){
     $('#lvRemain').text('ไม่จำกัดโควตา');
   } else { $('#lvRemain').text(''); }
@@ -136,7 +157,32 @@ function recalcDays(){
   if(mode !== 'full'){ $('#lvEnd').val(start).prop('disabled', true); }
   else { $('#lvEnd').prop('disabled', false); }
   var end = $('#lvEnd').val();
-  if(!start || !end){ $('#lvDays').text('-'); return; }
+
+  var isHourly = mode === 'hourly';
+  $('#lvTimeBox1, #lvTimeBox2').toggleClass('d-none', !isHourly);
+  $('#lvDaysLabel').text(isHourly ? 'จำนวนชั่วโมงลา' : 'จำนวนวันลา');
+
+  if(!start){ $('#lvDays').text('-'); $('#lvDaysHint').text('กรุณาเลือกวันที่เริ่มลา'); return; }
+  if(!end){ $('#lvDays').text('-'); $('#lvDaysHint').text(''); return; }
+
+  if(isHourly){
+    var st = $('#lvStartTime').val(), et = $('#lvEndTime').val();
+    if(!st || !et){ $('#lvDays').text('-'); $('#lvDaysHint').text('กรุณาระบุเวลาเริ่มและเวลาสิ้นสุด'); return; }
+    var mins = _minutesBetween(st, et);
+    if(mins <= 0){ $('#lvDays').text('-'); $('#lvDaysHint').text('เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม'); return; }
+    var hrs = Math.round((mins / 60) * 100) / 100;
+    $('#lvDaysHint').text('');
+    api('previewLeaveDays', APP.token, start, end, 'hourly', 'hourly', st, et).then(function(r){
+      if(r.status === 'success' && r.days > 0){
+        $('#lvDays').text(hrs + ' ชั่วโมง'); $('#lvDaysHint').text('');
+      } else {
+        $('#lvDays').text('-'); $('#lvDaysHint').text('วันที่เลือกไม่ใช่วันทำงาน (วันหยุด/สุดสัปดาห์)');
+      }
+    });
+    return;
+  }
+
+  $('#lvDaysHint').text('');
   var sh = mode !== 'full' ? mode : 'full';
   api('previewLeaveDays', APP.token, start, end, sh, sh).then(function(r){
     $('#lvDays').text(r.status === 'success' ? r.days : '-');
@@ -170,6 +216,9 @@ function submitLeave(){
     toast('error','กรอกข้อมูลให้ครบ'); return;
   }
   if(t && t.requires_attachment && !attachId){ toast('error','ประเภทนี้ต้องแนบเอกสาร'); return; }
+  if(mode === 'hourly' && (!$('#lvStartTime').val() || !$('#lvEndTime').val())){
+    toast('error','กรุณาระบุเวลาเริ่มและเวลาสิ้นสุด'); return;
+  }
 
   var obj = {
     employee_id: $('#lvEmp').val(),
@@ -177,6 +226,8 @@ function submitLeave(){
     start_date: $('#lvStart').val(),
     end_date: $('#lvEnd').val(),
     start_half: sh, end_half: sh,
+    start_time: mode === 'hourly' ? $('#lvStartTime').val() : '',
+    end_time: mode === 'hourly' ? $('#lvEndTime').val() : '',
     reason: $('#lvReason').val().trim(),
     contact_during_leave: $('#lvContact').val().trim(),
     attachment_file_ids: attachId ? [attachId] : []
@@ -186,7 +237,7 @@ function submitLeave(){
     btn.prop('disabled', false);
     if(r.status === 'success'){
       bootstrap.Modal.getInstance(document.getElementById('modalLeave')).hide();
-      Swal.fire({ icon:'success', title:r.message, confirmButtonColor:'#3b3f9e' });
+      Swal.fire({ icon:'success', title:r.message, confirmButtonColor: brandColor() });
       loadLeave();
     } else { toast('error', r.message); }
   });
@@ -198,15 +249,15 @@ function openDetail(id){
     if(r.status !== 'success'){ toast('error', r.message); return; }
     var d = r.data;
     var range = fmtDateBE(d.start_date) + (d.start_date !== d.end_date ? ' ถึง ' + fmtDateBE(d.end_date) : '');
-    var half = lvModeText(d.start_half);
+    var half = d.start_half === 'hourly' ? ((d.start_time || '') + '-' + (d.end_time || '') + ' น.') : lvModeText(d.start_half);
 
     var rows = ''
       + detailRow('เลขที่', d.request_no)
-      + detailRow('พนักงาน', d.employee_name + (d.employee_position ? ' · ' + d.employee_position : ''))
+      + detailRow('พนักงาน', d.employee_name)
       + detailRow('แผนก', d.department_name || '-')
       + detailRow('ประเภท', d.leave_type_name)
       + detailRow('ช่วงวันลา', range + (half ? ' (' + half + ')' : ''))
-      + detailRow('จำนวนวัน', d.total_days + ' วัน')
+      + detailRow('จำนวนวัน', fmtLeaveAmount(d))
       + detailRow('เหตุผล', d.reason || '-')
       + detailRow('ติดต่อระหว่างลา', d.contact_during_leave || '-')
       + detailRow('สถานะ', lvStatusBadge(d.status));

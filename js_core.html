@@ -2,10 +2,23 @@
 /* ============================================================
    CORE — api wrapper, session, login, navigation
    ============================================================ */
-var APP = { token: null, user: null, be: true };
+var APP = { token: null, user: null, be: true, hoursPerDay: 8 };
 var TOKEN_KEY = 'leave_token';
 var THEME_KEY = 'leave_theme';
 window.PAGE_HOOKS = {};
+
+var DEFAULT_BRAND_COLOR = '#3b3f9e';
+var DEFAULT_ACCENT_COLOR = '#eab676';
+APP.theme = { brand: DEFAULT_BRAND_COLOR, accent: DEFAULT_ACCENT_COLOR };
+
+function brandColor(){ return (APP.theme && APP.theme.brand) || DEFAULT_BRAND_COLOR; }
+
+function applyThemeColors(brand, accent){
+  var root = document.documentElement.style;
+  root.setProperty('--brand', brand || DEFAULT_BRAND_COLOR);
+  root.setProperty('--accent', accent || DEFAULT_ACCENT_COLOR);
+  APP.theme = { brand: brand || DEFAULT_BRAND_COLOR, accent: accent || DEFAULT_ACCENT_COLOR };
+}
 
 function api(fn){
   var args = Array.prototype.slice.call(arguments, 1);
@@ -51,6 +64,8 @@ function loadBrand(){
     if(r.app_name){ $('.brand-name').text(r.app_name); document.title = r.app_name; }
     if(r.app_version){ $('.app-ver').text(r.app_version); }
     APP.be = (r.buddhist_era !== false);
+    APP.hoursPerDay = r.hours_per_day || 8;
+    applyThemeColors(r.theme_brand, r.theme_accent);
     if(r.logo_url){
       $('.brand-logo').attr('src', r.logo_url).removeClass('d-none');
       $('.brand-logo-fallback').addClass('d-none');
@@ -65,7 +80,7 @@ function showSetup(){
     text: 'ยังไม่พบชีตข้อมูล กดเพื่อสร้างชีตและข้อมูลเริ่มต้นทั้งหมด',
     icon: 'info',
     confirmButtonText: 'ติดตั้งเลย',
-    confirmButtonColor: '#3b3f9e',
+    confirmButtonColor: brandColor(),
     allowOutsideClick: false
   }).then(function(res){
     if(res.isConfirmed){
@@ -74,7 +89,7 @@ function showSetup(){
         Swal.fire({
           icon: r.status === 'success' ? 'success' : 'error',
           title: r.message,
-          confirmButtonColor: '#3b3f9e'
+          confirmButtonColor: brandColor()
         });
       });
     }
@@ -146,7 +161,7 @@ function doLogout(){
     showCancelButton: true,
     confirmButtonText: 'ออกจากระบบ',
     cancelButtonText: 'ยกเลิก',
-    confirmButtonColor: '#3b3f9e'
+    confirmButtonColor: brandColor()
   }).then(function(res){
     if(res.isConfirmed){
       api('logout', APP.token).catch(function(){});

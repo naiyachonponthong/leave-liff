@@ -5,14 +5,14 @@
    ============================================================ */
 :root{
   --brand:      oklch(0.46 0.12 264);
-  --brand-700:  oklch(0.37 0.11 264);
-  --brand-900:  oklch(0.27 0.06 264);
-  --brand-100:  oklch(0.93 0.03 264);
-  --brand-050:  oklch(0.97 0.015 264);
+  --brand-700:  color-mix(in oklch, var(--brand) 82%, black);
+  --brand-900:  color-mix(in oklch, var(--brand) 58%, black);
+  --brand-100:  color-mix(in oklch, var(--brand) 14%, white);
+  --brand-050:  color-mix(in oklch, var(--brand) 6%, white);
 
   --accent:     oklch(0.84 0.15 84);
-  --accent-600: oklch(0.76 0.15 78);
-  --accent-700: oklch(0.68 0.14 72);
+  --accent-600: color-mix(in oklch, var(--accent) 90%, black);
+  --accent-700: color-mix(in oklch, var(--accent) 78%, black);
 
   --bg:         oklch(0.972 0.012 265);
   --surface:    oklch(1 0 0);
@@ -44,8 +44,8 @@
   --ink-soft:  oklch(0.82 0.015 265);
   --muted:     oklch(0.66 0.02 265);
   --line:      oklch(0.37 0.02 265);
-  --brand-100: oklch(0.34 0.05 264);
-  --brand-050: oklch(0.30 0.03 264);
+  --brand-100: color-mix(in oklch, var(--brand) 38%, black);
+  --brand-050: color-mix(in oklch, var(--brand) 24%, black);
 }
 
 *{ font-family: 'Prompt', system-ui, sans-serif; }

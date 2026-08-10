@@ -28,12 +28,17 @@ $(document).ready(function(){
   // toggle ระดับ 2
   $('#cfgLevels').on('change', function(){ $('#boxL2').toggle($(this).val() === '2'); });
 
+  $('#btnResetTheme').on('click', function(){
+    $('#cfgBrandColor').val(DEFAULT_BRAND_COLOR);
+    $('#cfgAccentColor').val(DEFAULT_ACCENT_COLOR);
+  });
+
   $('#btnSaveConfig').on('click', saveSettings);
 
   $('#btnCarryForward').on('click', function(){
     var lastYear = new Date().getFullYear() - 1;
     Swal.fire({ title:'ยกยอดวันลา', html:'ยกยอดวันคงเหลือจากปี <b>' + (lastYear+543) + '</b> ไปปี <b>' + (lastYear+544) + '</b>?<br><small class="text-muted">เฉพาะประเภทลาที่เปิดใช้ "ยกยอดวันลา"</small>',
-      showCancelButton:true, confirmButtonText:'ยกยอด', cancelButtonText:'ยกเลิก', confirmButtonColor:'#3b3f9e'
+      showCancelButton:true, confirmButtonText:'ยกยอด', cancelButtonText:'ยกเลิก', confirmButtonColor: brandColor()
     }).then(function(res){
       if(!res.isConfirmed) return;
       setBtnLoading('#btnCarryForward', true);
@@ -46,7 +51,7 @@ $(document).ready(function(){
 
   $('#btnSetupRichMenu').on('click', function(){
     Swal.fire({ title:'ตั้งค่า Rich Menu?', text:'จะสร้าง Rich Menu LINE ให้ทุกผู้ใช้ (ต้องตั้งค่า LIFF ID ก่อน)', icon:'question',
-      showCancelButton:true, confirmButtonText:'ตั้งค่า', cancelButtonText:'ยกเลิก', confirmButtonColor:'#3b3f9e'
+      showCancelButton:true, confirmButtonText:'ตั้งค่า', cancelButtonText:'ยกเลิก', confirmButtonColor: brandColor()
     }).then(function(res){
       if(!res.isConfirmed) return;
       setBtnLoading('#btnSetupRichMenu', true);
@@ -84,9 +89,10 @@ function loadSettings(){
     $('#cfgL2').val(c.level2_role || 'hr');
     $('#boxL2').toggle(String(c.approval_levels || 2) === '2');
     $('#cfgWorkHours').val(c.work_hours || '08:00-17:00');
-    $('#cfgHalfDay').prop('checked', c.half_day_enabled !== false);
     $('#cfgBE').prop('checked', c.buddhist_era !== false);
     $('#cfgNotify').prop('checked', c.notification_enabled !== false);
+    $('#cfgBrandColor').val(c.theme_brand || DEFAULT_BRAND_COLOR);
+    $('#cfgAccentColor').val(c.theme_accent || DEFAULT_ACCENT_COLOR);
 
     var days = c.work_days || ['MO','TU','WE','TH','FR'];
     $('#workDays .day-chip').each(function(){
@@ -117,16 +123,20 @@ function saveSettings(){
     level2_role: $('#cfgL2').val(),
     work_days: days,
     work_hours: $('#cfgWorkHours').val().trim(),
-    half_day_enabled: $('#cfgHalfDay').is(':checked'),
     buddhist_era: $('#cfgBE').is(':checked'),
-    notification_enabled: $('#cfgNotify').is(':checked')
+    notification_enabled: $('#cfgNotify').is(':checked'),
+    theme_brand: $('#cfgBrandColor').val(),
+    theme_accent: $('#cfgAccentColor').val()
   };
 
   setBtnLoading('#btnSaveConfig', true);
   api('saveConfig', APP.token, payload).then(function(r){
     setBtnLoading('#btnSaveConfig', false);
     toast(r.status === 'success' ? 'success' : 'error', r.message);
-    if(r.status === 'success'){ $('.brand-name').text(payload.app_name); }
+    if(r.status === 'success'){
+      $('.brand-name').text(payload.app_name);
+      applyThemeColors(payload.theme_brand, payload.theme_accent);
+    }
   }).catch(function(){ setBtnLoading('#btnSaveConfig', false); });
 }
 

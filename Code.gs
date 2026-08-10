@@ -43,7 +43,14 @@ const CONFIG = {
   },
 
   TELEGRAM_BOT_TOKEN: '',
-  TELEGRAM_CHAT_ID: ''
+  TELEGRAM_CHAT_ID: '',
+
+  // โทนสีเริ่มต้น (ปรับได้ที่หน้าตั้งค่าระบบ)
+  THEME_BRAND: '#3b3f9e',
+  THEME_ACCENT: '#eab676',
+
+  // ชั่วโมงทำงานต่อวัน ใช้แปลงลาแบบรายชั่วโมงเป็นสัดส่วนวัน
+  HOURS_PER_DAY: 8
 };
 
 // ชื่อชีต -> header column (1 JSON object ต่อ 1 แถว)
@@ -174,7 +181,8 @@ function initializeSheets() {
         level2_role: 'hr',
         work_days: ['MO', 'TU', 'WE', 'TH', 'FR'],
         work_hours: '08:00-17:00',
-        half_day_enabled: true,
+        theme_brand: CONFIG.THEME_BRAND,
+        theme_accent: CONFIG.THEME_ACCENT,
         fiscal_start_month: 1,
         buddhist_era: true,
         notification_enabled: true,
@@ -231,13 +239,23 @@ function initializeSheets() {
           default_quota_days: d.quota,
           max_per_request: 0,
           requires_attachment: d.attach,
-          allow_half_day: true,
           paid: true,
           gender_restrict: '',
           carry_over: false,
           order: i + 1,
           active: true,
           created_at: _now()
+        });
+      });
+    }
+
+    // 5) Departments (ค่าตั้งต้น)
+    if (_readAll('Departments').length === 0) {
+      ['อายุรกรรม', 'ศัลยกรรม', 'กระดูกและข้อ', 'หู คอ จมูก', 'ตา', 'นรีเวช'].forEach(function (name) {
+        _append('Departments', {
+          id: _uuid(), name: name, code: '',
+          head_user_ids: [], parent_id: '',
+          active: true, created_at: _now(), updated_at: _now()
         });
       });
     }
@@ -378,7 +396,10 @@ function getAppInfo() {
       app_version: c.app_version || CONFIG.APP_VERSION,
       logo_url: logoUrl,
       initialized: cfg.length > 0,
-      buddhist_era: c.buddhist_era !== false
+      buddhist_era: c.buddhist_era !== false,
+      theme_brand: c.theme_brand || CONFIG.THEME_BRAND,
+      theme_accent: c.theme_accent || CONFIG.THEME_ACCENT,
+      hours_per_day: _hoursPerDay(c)
     };
   } catch (err) {
     return {
@@ -386,7 +407,10 @@ function getAppInfo() {
       app_name: CONFIG.APP_NAME,
       app_version: CONFIG.APP_VERSION,
       logo_url: '',
-      initialized: false
+      initialized: false,
+      theme_brand: CONFIG.THEME_BRAND,
+      theme_accent: CONFIG.THEME_ACCENT,
+      hours_per_day: CONFIG.HOURS_PER_DAY || 8
     };
   }
 }
@@ -501,8 +525,9 @@ function remindPendingApprovals() {
     var ids = [];
     _readAll('Users').forEach(function(r){
       var u = r.data;
-      if (u.active && u.line_user_id && (u.role === 'admin' || u.role === 'hr' || u.role === 'supervisor')) {
-        ids.push(u.line_user_id);
+      if (u.active && (u.role === 'admin' || u.role === 'hr' || u.role === 'supervisor')) {
+        var lid = _userLineId(u);
+        if (lid && ids.indexOf(lid) === -1) ids.push(lid);
       }
     });
     if (!ids.length) return;
@@ -544,18 +569,17 @@ function importEmployeesCSV(token, rows) {
         var lastName  = (row.last_name  || row['นามสกุล'] || '').trim();
         if (!firstName || !lastName) { skip++; return; }
         var deptName = (row.department || row['แผนก'] || '').trim();
+        var empCode = (row.emp_code || row['รหัสพนักงาน'] || '').trim() || _genEmpCode();
         _append('Employees', {
           id: _uuid(),
           prefix: row.prefix || row['คำนำหน้า'] || 'นาย',
           first_name: firstName, last_name: lastName,
           nickname: row.nickname || row['ชื่อเล่น'] || '',
-          emp_code: row.emp_code || row['รหัสพนักงาน'] || '',
+          emp_code: empCode,
           department_id: depts[deptName] || '',
-          position: row.position || row['ตำแหน่ง'] || '',
           employment_type: row.employment_type || row['ประเภท'] || 'ประจำ',
           phone: row.phone || row['เบอร์โทร'] || '',
           email: row.email || row['อีเมล'] || '',
-          start_date: row.start_date || row['วันเริ่มงาน'] || '',
           status: 'active', line_user_id: '', line_linked: false,
           photo_file_id: '', supervisor_id: '',
           created_at: _now(), updated_at: _now()
@@ -730,6 +754,76 @@ function deleteUser(token, id) {
   }
 }
 
+/** ตั้งพนักงานให้เป็นผู้ใช้ระบบ (admin/hr/supervisor) — สร้าง/อัปเดตบัญชีใน Users ให้อัตโนมัติ */
+function promoteEmployeeToUser(token, payload) {
+  var actor = _auth(token);
+  if (actor.role !== 'admin') return { status: 'error', message: 'ไม่มีสิทธิ์' };
+  try {
+    var empId = payload.employee_id;
+    var empRow = null;
+    var emps = _readAll('Employees');
+    for (var i = 0; i < emps.length; i++) {
+      if (emps[i].data.id === empId) { empRow = emps[i]; break; }
+    }
+    if (!empRow) return { status: 'error', message: 'ไม่พบพนักงาน' };
+    var emp = empRow.data;
+
+    var role = payload.role;
+    if (!CONFIG.USER_ROLES[role]) return { status: 'error', message: 'บทบาทไม่ถูกต้อง' };
+
+    var username = (payload.username || '').trim().toLowerCase();
+    if (!username) return { status: 'error', message: 'กรุณาระบุชื่อผู้ใช้' };
+
+    var users = _readAll('Users');
+    var linked = null, dupUser = null;
+    for (var j = 0; j < users.length; j++) {
+      if (users[j].data.employee_id === empId) linked = users[j];
+      if (users[j].data.username === username) dupUser = users[j];
+    }
+    if (dupUser && (!linked || dupUser.data.id !== linked.data.id)) {
+      return { status: 'error', message: 'ชื่อผู้ใช้นี้มีอยู่แล้ว' };
+    }
+
+    var rolePerms = (CONFIG.USER_ROLES[role] || {}).permissions || [];
+    var fullName = (emp.prefix || '') + emp.first_name + ' ' + emp.last_name;
+
+    if (linked) {
+      var d = linked.data;
+      d.username = username;
+      d.role = role;
+      d.permissions = rolePerms;
+      d.name = fullName;
+      d.email = emp.email || d.email || '';
+      d.active = payload.active !== false;
+      if (payload.password) d.password = payload.password;
+      d.updated_at = _now();
+      _update('Users', linked.rowIndex, d);
+      return { status: 'success', message: 'อัปเดตบทบาทผู้ใช้ระบบเรียบร้อยแล้ว' };
+    }
+
+    if (!payload.password) return { status: 'error', message: 'กรุณาระบุรหัสผ่าน' };
+    _append('Users', {
+      id: _uuid(),
+      username: username,
+      password: payload.password,
+      role: role,
+      name: fullName,
+      email: emp.email || '',
+      line_user_id: '',
+      employee_id: empId,
+      permissions: rolePerms,
+      active: payload.active !== false,
+      last_login: '',
+      created_at: _now(),
+      updated_at: _now()
+    });
+    return { status: 'success', message: 'ตั้งค่าบัญชีผู้ใช้ระบบเรียบร้อยแล้ว' };
+  } catch (err) {
+    logError(err.toString(), 'promoteEmployeeToUser');
+    return { status: 'error', message: err.toString() };
+  }
+}
+
 // ============================================================
 // PHASE 1 — SETTINGS / CONFIG
 // ============================================================
@@ -753,8 +847,9 @@ function saveConfig(token, payload) {
     var d = c.data;
     var allow = ['app_name', 'line_channel_access_token', 'line_channel_secret', 'line_liff_id',
       'folder_id', 'approval_levels', 'level1_role', 'level2_role', 'work_days', 'work_hours',
-      'half_day_enabled', 'fiscal_start_month', 'buddhist_era', 'notification_enabled',
-      'email_notifications', 'telegram_bot_token', 'telegram_chat_id', 'maintenance_mode'];
+      'fiscal_start_month', 'buddhist_era', 'notification_enabled',
+      'email_notifications', 'telegram_bot_token', 'telegram_chat_id', 'maintenance_mode',
+      'theme_brand', 'theme_accent'];
     allow.forEach(function (k) { if (payload[k] !== undefined) d[k] = payload[k]; });
     if (d.approval_levels !== undefined) d.approval_levels = Number(d.approval_levels) || 1;
     d.updated_at = _now();
@@ -829,6 +924,22 @@ function getLeaveTypes(token) {
   return { status: 'success', data: rows };
 }
 
+/**
+ * คำนวณโควตาของประเภทการลา ตามหน่วยที่เลือก
+ * - 'days'  : โควตา/ปี (วัน) กรอกตรงๆ ตามเดิม
+ * - 'hours' : โควตา/สัปดาห์ (ชั่วโมง) แปลงเป็นโควตารวมทั้งปี (x 52 สัปดาห์) แล้วแปลงเป็นวัน-เทียบเท่า
+ *   เพื่อให้ใช้ระบบยอดคงเหลือ/ตัดโควตาชุดเดียวกับโควตาแบบวันได้ทั้งหมด
+ */
+function _resolveLeaveTypeQuota(obj) {
+  if (obj.quota_unit === 'hours') {
+    var hoursPerWeek = Number(obj.quota_hours_per_week) || 0;
+    var annualHours = hoursPerWeek * 52;
+    var days = Math.round((annualHours / _hoursPerDay()) * 1000) / 1000;
+    return { quota_unit: 'hours', quota_hours_per_week: hoursPerWeek, default_quota_days: days };
+  }
+  return { quota_unit: 'days', quota_hours_per_week: 0, default_quota_days: Number(obj.default_quota_days) || 0 };
+}
+
 function saveLeaveType(token, obj) {
   _auth(token);
   try {
@@ -838,11 +949,12 @@ function saveLeaveType(token, obj) {
       for (var i = 0; i < rows.length; i++) {
         if (rows[i].data.id === obj.id) {
           var d = rows[i].data;
-          ['name', 'code', 'color', 'default_quota_days', 'max_per_request', 'requires_attachment',
-            'allow_half_day', 'paid', 'gender_restrict', 'carry_over', 'order', 'active', 'seniority_tiers'].forEach(function (k) {
+          ['name', 'code', 'color', 'max_per_request', 'requires_attachment',
+            'paid', 'gender_restrict', 'carry_over', 'order', 'active', 'seniority_tiers'].forEach(function (k) {
             if (obj[k] !== undefined) d[k] = obj[k];
           });
-          d.default_quota_days = Number(d.default_quota_days) || 0;
+          var q = _resolveLeaveTypeQuota(obj);
+          d.quota_unit = q.quota_unit; d.quota_hours_per_week = q.quota_hours_per_week; d.default_quota_days = q.default_quota_days;
           d.max_per_request = Number(d.max_per_request) || 0;
           d.order = Number(d.order) || 0;
           _update('LeaveTypes', rows[i].rowIndex, d);
@@ -851,10 +963,12 @@ function saveLeaveType(token, obj) {
       }
       return { status: 'error', message: 'ไม่พบรายการ' };
     }
+    var newQ = _resolveLeaveTypeQuota(obj);
     _append('LeaveTypes', {
       id: _uuid(), name: obj.name, code: obj.code || '', color: obj.color || '#64748b',
-      default_quota_days: Number(obj.default_quota_days) || 0, max_per_request: Number(obj.max_per_request) || 0,
-      requires_attachment: !!obj.requires_attachment, allow_half_day: obj.allow_half_day !== false,
+      quota_unit: newQ.quota_unit, quota_hours_per_week: newQ.quota_hours_per_week, default_quota_days: newQ.default_quota_days,
+      max_per_request: Number(obj.max_per_request) || 0,
+      requires_attachment: !!obj.requires_attachment,
       paid: obj.paid !== false, gender_restrict: obj.gender_restrict || '', carry_over: !!obj.carry_over,
       order: Number(obj.order) || (rows.length + 1), active: obj.active !== false,
       seniority_tiers: obj.seniority_tiers || [], created_at: _now()
@@ -920,6 +1034,31 @@ function saveDepartment(token, obj) {
     return { status: 'success', message: 'เพิ่มแผนกแล้ว' };
   } catch (err) {
     logError(err.toString(), 'saveDepartment');
+    return { status: 'error', message: err.toString() };
+  }
+}
+
+/** หาแผนกจากชื่อ (ไม่สนตัวพิมพ์เล็ก/ใหญ่) ถ้าไม่พบให้สร้างใหม่ให้เลย — ใช้ตอนเลือก "อื่นๆ" แล้วพิมพ์ชื่อแผนกเองในฟอร์มพนักงาน */
+function getOrCreateDepartment(token, name) {
+  _auth(token);
+  try {
+    name = (name || '').trim();
+    if (!name) return { status: 'error', message: 'กรุณาระบุชื่อแผนก' };
+    var rows = _readAll('Departments');
+    for (var i = 0; i < rows.length; i++) {
+      if ((rows[i].data.name || '').trim().toLowerCase() === name.toLowerCase()) {
+        return { status: 'success', id: rows[i].data.id, name: rows[i].data.name };
+      }
+    }
+    var dept = {
+      id: _uuid(), name: name, code: '',
+      head_user_ids: [], parent_id: '',
+      active: true, created_at: _now(), updated_at: _now()
+    };
+    _append('Departments', dept);
+    return { status: 'success', id: dept.id, name: dept.name };
+  } catch (err) {
+    logError(err.toString(), 'getOrCreateDepartment');
     return { status: 'error', message: err.toString() };
   }
 }
@@ -1028,9 +1167,81 @@ function _isoDate(d) {
   return d.getFullYear() + '-' + m + '-' + dd;
 }
 
-/** คำนวณจำนวนวันลา (ตัดวันหยุดสุดสัปดาห์ + วันหยุด) รองรับครึ่งวัน */
-function _calcLeaveDays(startDate, endDate, startHalf, endHalf) {
+/** "HH:MM" -> จำนวนนาทีนับจากเที่ยงคืน (ค่าไม่ถูกต้อง -> null) */
+function _timeToMinutes(t) {
+  if (!t || typeof t !== 'string' || t.indexOf(':') === -1) return null;
+  var p = t.split(':');
+  var h = parseInt(p[0], 10), m = parseInt(p[1], 10);
+  if (isNaN(h) || isNaN(m)) return null;
+  return h * 60 + m;
+}
+
+/** แปลง cfg.work_hours ("08:00-17:00") เป็น {startMin, endMin} หรือ null ถ้ารูปแบบไม่ถูกต้อง */
+function _workHourSpan(cfg) {
+  var wh = (cfg.work_hours || '').split('-');
+  if (wh.length !== 2) return null;
+  var s = _timeToMinutes(wh[0].trim()), e = _timeToMinutes(wh[1].trim());
+  if (s === null || e === null || e <= s) return null;
+  return { startMin: s, endMin: e };
+}
+
+/** ชั่วโมงทำงานต่อวัน คำนวณจากช่วง "เวลาทำงาน" ที่ตั้งค่าไว้ (เช่น "08:00-17:00" -> 9 ชม.) ถ้าตั้งค่าไม่ถูกต้องใช้ค่าเริ่มต้น */
+function _hoursPerDay(cfg) {
+  cfg = cfg || _getConfigRow().data;
+  var span = _workHourSpan(cfg);
+  return span ? (span.endMin - span.startMin) / 60 : (CONFIG.HOURS_PER_DAY || 8);
+}
+
+/**
+ * จำนวนวัน-เทียบเท่าของการลารายชั่วโมง ตั้งแต่ startDate+startTime ถึง endDate+endTime
+ * รองรับช่วงข้ามวัน — แต่ละวันจะถูกตัดขอบเขตด้วยเวลาทำงานที่ตั้งค่าไว้ (cfg.work_hours) และนับเฉพาะวันทำงาน
+ */
+function _calcHourlyRange(startDate, endDate, startTime, endTime) {
+  var s = _parseDate(startDate), e = _parseDate(endDate);
+  if (e < s) return 0;
+
+  var cfg = _getConfigRow().data;
+  var span = _workHourSpan(cfg);
+  var hoursPerDay = _hoursPerDay(cfg);
+  var workStart = span ? span.startMin : 0;
+  var workEnd = span ? span.endMin : hoursPerDay * 60;
+
+  var sameDay = startDate === endDate;
+  var sMin = _timeToMinutes(startTime);
+  var eMin = _timeToMinutes(endTime);
+  if (sMin === null) sMin = workStart;
+  if (eMin === null) eMin = workEnd;
+
+  var totalMinutes = 0;
+  var cur = new Date(s.getTime());
+  while (cur <= e) {
+    var iso = _isoDate(cur);
+    if (_isWorkingDay(iso)) {
+      var dayStart = workStart, dayEnd = workEnd;
+      if (sameDay) {
+        dayStart = Math.max(workStart, sMin);
+        dayEnd = Math.min(workEnd, eMin);
+      } else if (iso === startDate) {
+        dayStart = Math.max(workStart, sMin);
+      } else if (iso === endDate) {
+        dayEnd = Math.min(workEnd, eMin);
+      }
+      if (dayEnd > dayStart) totalMinutes += (dayEnd - dayStart);
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+  if (totalMinutes <= 0) return 0;
+  return Math.round((totalMinutes / 60 / hoursPerDay) * 1000) / 1000;
+}
+
+/** คำนวณจำนวนวันลา (ตัดวันหยุดสุดสัปดาห์ + วันหยุด) รองรับครึ่งวัน/รายชั่วโมง (รวมข้ามวัน) */
+function _calcLeaveDays(startDate, endDate, startHalf, endHalf, startTime, endTime) {
   if (!startDate || !endDate) return 0;
+
+  if (startHalf === 'hourly') {
+    return _calcHourlyRange(startDate, endDate, startTime, endTime);
+  }
+
   var cfg = _getConfigRow().data;
   var workDays = cfg.work_days || ['MO', 'TU', 'WE', 'TH', 'FR'];
   var dayMap = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
@@ -1057,9 +1268,20 @@ function _calcLeaveDays(startDate, endDate, startHalf, endHalf) {
   return count;
 }
 
-function previewLeaveDays(token, startDate, endDate, startHalf, endHalf) {
+/** เช็คว่าวันที่ระบุเป็นวันทำงานหรือไม่ (ตามวันทำงาน + วันหยุดที่ตั้งค่าไว้) */
+function _isWorkingDay(dateStr) {
+  var cfg = _getConfigRow().data;
+  var workDays = cfg.work_days || ['MO', 'TU', 'WE', 'TH', 'FR'];
+  var dayMap = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+  var dow = dayMap[_parseDate(dateStr).getDay()];
+  if (workDays.indexOf(dow) === -1) return false;
+  var holiday = _readAll('Holidays').some(function (h) { return h.data.active && h.data.date === dateStr; });
+  return !holiday;
+}
+
+function previewLeaveDays(token, startDate, endDate, startHalf, endHalf, startTime, endTime) {
   _auth(token);
-  return { status: 'success', days: _calcLeaveDays(startDate, endDate, startHalf, endHalf) };
+  return { status: 'success', days: _calcLeaveDays(startDate, endDate, startHalf, endHalf, startTime, endTime) };
 }
 
 function _empById(id) {
@@ -1136,7 +1358,19 @@ function createLeaveRequest(token, obj) {
 
     var startHalf = obj.start_half || 'full';
     var endHalf = obj.end_half || 'full';
-    var total = _calcLeaveDays(obj.start_date, obj.end_date, startHalf, endHalf);
+
+    if (startHalf === 'hourly') {
+      if (!obj.start_time || !obj.end_time) return { status: 'error', message: 'กรุณาระบุเวลาเริ่มและเวลาสิ้นสุด' };
+      if (_timeToMinutes(obj.start_time) === null || _timeToMinutes(obj.end_time) === null) {
+        return { status: 'error', message: 'รูปแบบเวลาไม่ถูกต้อง' };
+      }
+      if (obj.end_date < obj.start_date) return { status: 'error', message: 'วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม' };
+      if (obj.start_date === obj.end_date && _timeToMinutes(obj.end_time) <= _timeToMinutes(obj.start_time)) {
+        return { status: 'error', message: 'เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม' };
+      }
+    }
+
+    var total = _calcLeaveDays(obj.start_date, obj.end_date, startHalf, endHalf, obj.start_time, obj.end_time);
     if (total <= 0) return { status: 'error', message: 'ช่วงวันที่เลือกไม่มีวันทำงาน' };
 
     var year = parseInt(obj.start_date.substring(0, 4), 10);
@@ -1163,6 +1397,8 @@ function createLeaveRequest(token, obj) {
       end_date: obj.end_date,
       start_half: startHalf,
       end_half: endHalf,
+      start_time: startHalf === 'hourly' ? obj.start_time : '',
+      end_time: startHalf === 'hourly' ? obj.end_time : '',
       total_days: total,
       reason: obj.reason || '',
       contact_during_leave: obj.contact_during_leave || '',
@@ -1230,7 +1466,6 @@ function getLeaveRequest(token, id) {
       d.department_name = _deptName(d.department_id);
       var emp = _empById(d.employee_id);
       d.employee_phone = emp ? emp.phone : '';
-      d.employee_position = emp ? emp.position : '';
       d.attachments = (d.attachment_file_ids || []).map(function (fid) {
         return { id: fid, url: 'https://drive.google.com/thumbnail?id=' + fid };
       });
@@ -1288,11 +1523,16 @@ function getEmployees(token) {
   _auth(token);
   var depts = {};
   _readAll('Departments').forEach(function (r) { depts[r.data.id] = r.data.name; });
+  var userByEmp = {};
+  _readAll('Users').forEach(function (r) { if (r.data.employee_id) userByEmp[r.data.employee_id] = r.data; });
   var data = _readAll('Employees').map(function (r) {
     var e = r.data;
     e.department_name = depts[e.department_id] || '';
     e.full_name = (e.prefix || '') + e.first_name + ' ' + e.last_name;
     e.photo_url = e.photo_file_id ? ('https://drive.google.com/thumbnail?id=' + e.photo_file_id) : '';
+    var u = userByEmp[e.id];
+    e.system_role = u ? u.role : '';
+    e.system_username = u ? u.username : '';
     return e;
   });
   data.sort(function (a, b) { return (a.emp_code || '') < (b.emp_code || '') ? -1 : 1; });
@@ -1307,20 +1547,35 @@ function getEmployeesSimple(token) {
   return { status: 'success', data: data };
 }
 
+/** สร้างรหัสพนักงานอัตโนมัติ (รูปแบบ EMP + เลขเรียงต่อจากรหัสสูงสุดที่มีอยู่ในรูปแบบเดียวกัน) */
+function _genEmpCode() {
+  var rows = _readAll('Employees');
+  var maxN = 0;
+  rows.forEach(function (r) {
+    var m = /^EMP(\d+)$/.exec(r.data.emp_code || '');
+    if (m) { var n = parseInt(m[1], 10); if (n > maxN) maxN = n; }
+  });
+  return 'EMP' + ('000' + (maxN + 1)).slice(-3);
+}
+
 function saveEmployee(token, obj) {
   _auth(token);
   try {
     if (!obj.first_name || !obj.last_name) return { status: 'error', message: 'กรุณากรอกชื่อ-นามสกุล' };
     var rows = _readAll('Employees');
-    if (obj.emp_code) {
+    var empCode = (obj.emp_code || '').trim();
+    if (empCode) {
       for (var i = 0; i < rows.length; i++) {
-        if (rows[i].data.emp_code === obj.emp_code && rows[i].data.id !== obj.id) {
-          return { status: 'error', message: 'รหัสพนักงาน ' + obj.emp_code + ' มีอยู่แล้ว' };
+        if (rows[i].data.emp_code === empCode && rows[i].data.id !== obj.id) {
+          return { status: 'error', message: 'รหัสพนักงาน ' + empCode + ' มีอยู่แล้ว' };
         }
       }
+    } else {
+      empCode = _genEmpCode();
     }
-    var fields = ['emp_code', 'prefix', 'first_name', 'last_name', 'nickname', 'position',
-      'department_id', 'supervisor_id', 'employment_type', 'start_date', 'phone', 'email',
+    obj.emp_code = empCode;
+    var fields = ['emp_code', 'prefix', 'first_name', 'last_name', 'nickname',
+      'department_id', 'supervisor_id', 'employment_type', 'phone', 'email',
       'photo_file_id', 'status'];
     if (obj.id) {
       for (var j = 0; j < rows.length; j++) {
@@ -1337,9 +1592,9 @@ function saveEmployee(token, obj) {
     var emp = {
       id: _uuid(), emp_code: obj.emp_code || '', prefix: obj.prefix || '',
       first_name: obj.first_name, last_name: obj.last_name, nickname: obj.nickname || '',
-      position: obj.position || '', department_id: obj.department_id || '',
+      department_id: obj.department_id || '',
       supervisor_id: obj.supervisor_id || '', employment_type: obj.employment_type || 'ประจำ',
-      start_date: obj.start_date || '', phone: obj.phone || '', email: obj.email || '',
+      phone: obj.phone || '', email: obj.email || '',
       line_user_id: '', line_linked: false, photo_file_id: obj.photo_file_id || '',
       status: obj.status || 'active', created_at: _now(), updated_at: _now()
     };
@@ -1402,7 +1657,7 @@ function getEmployeeByLineId(lineUserId) {
         var e = rows[i].data;
         return {
           status: 'success', linked: true,
-          employee: { id: e.id, emp_code: e.emp_code, name: (e.prefix || '') + e.first_name + ' ' + e.last_name, department_id: e.department_id, position: e.position }
+          employee: { id: e.id, emp_code: e.emp_code, name: (e.prefix || '') + e.first_name + ' ' + e.last_name, department_id: e.department_id }
         };
       }
     }
@@ -1463,7 +1718,8 @@ function getLeaveBalances(token, employeeId, year) {
       return {
         leave_type_id: b.leave_type_id, leave_type_name: t.name || '', color: t.color || '#64748b',
         entitled: Number(b.entitled_days), carried_over: Number(b.carried_over),
-        used: Number(b.used_days), pending: Number(b.pending_days), remaining: remaining
+        used: Number(b.used_days), pending: Number(b.pending_days), remaining: remaining,
+        quota_unit: t.quota_unit || 'days'
       };
     });
   data.sort(function (a, b) { return (types[a.leave_type_id] ? types[a.leave_type_id].order : 0) - (types[b.leave_type_id] ? types[b.leave_type_id].order : 0); });
@@ -1609,6 +1865,10 @@ function liffGetConfig() {
     app_name: d.app_name || CONFIG.APP_NAME,
     logo_url: d.logo_file_id ? ('https://drive.google.com/thumbnail?id=' + d.logo_file_id + '&sz=s200') : '',
     buddhist_era: d.buddhist_era !== false,
+    theme_brand: d.theme_brand || CONFIG.THEME_BRAND,
+    theme_accent: d.theme_accent || CONFIG.THEME_ACCENT,
+    hours_per_day: _hoursPerDay(d),
+    work_hours: d.work_hours || '08:00-17:00',
     exec_url: execUrl ? (execUrl + '?page=liff') : ''
   };
 }
@@ -1619,13 +1879,13 @@ function liffGetLeaveTypes() {
   return {
     status: 'success',
     data: rows.map(function (t) {
-      return { id: t.id, name: t.name, color: t.color, requires_attachment: t.requires_attachment, allow_half_day: t.allow_half_day, default_quota_days: t.default_quota_days };
+      return { id: t.id, name: t.name, color: t.color, requires_attachment: t.requires_attachment, default_quota_days: t.default_quota_days, quota_unit: t.quota_unit || 'days' };
     })
   };
 }
 
-function liffPreviewDays(startDate, endDate, startHalf, endHalf) {
-  return { status: 'success', days: _calcLeaveDays(startDate, endDate, startHalf, endHalf) };
+function liffPreviewDays(startDate, endDate, startHalf, endHalf, startTime, endTime) {
+  return { status: 'success', days: _calcLeaveDays(startDate, endDate, startHalf, endHalf, startTime, endTime) };
 }
 
 function _empByLine(lineUserId) {
@@ -1651,7 +1911,7 @@ function liffGetBalances(lineUserId) {
         entitled: Number(b.entitled_days) + Number(b.carried_over),
         used: Number(b.used_days), pending: Number(b.pending_days),
         remaining: Number(b.entitled_days) + Number(b.carried_over) - Number(b.used_days) - Number(b.pending_days),
-        order: t.order || 0
+        order: t.order || 0, quota_unit: t.quota_unit || 'days'
       };
     });
   data.sort(function (a, b) { return a.order - b.order; });
@@ -1667,6 +1927,7 @@ function liffGetHistory(lineUserId) {
       return {
         id: d.id, request_no: d.request_no, leave_type_name: d.leave_type_name,
         start_date: d.start_date, end_date: d.end_date, start_half: d.start_half,
+        start_time: d.start_time, end_time: d.end_time,
         total_days: d.total_days, status: d.status, reason: d.reason,
         created_at: d.created_at,
         last_comment: (d.approvals && d.approvals.length) ? d.approvals[d.approvals.length - 1].comment : ''
@@ -1754,7 +2015,7 @@ function liffGetLeaveDetail(lineUserId, leaveId) {
         data: {
           id: d.id, request_no: d.request_no, leave_type_name: d.leave_type_name,
           status: d.status, start_date: d.start_date, end_date: d.end_date,
-          start_half: d.start_half, total_days: d.total_days,
+          start_half: d.start_half, start_time: d.start_time, end_time: d.end_time, total_days: d.total_days,
           reason: d.reason || '', contact_during_leave: d.contact_during_leave || '',
           last_comment: lastApproval.comment || '',
           approved_by_name: approvedByName,
@@ -1785,6 +2046,45 @@ function liffGetHolidays(year) {
   }
 }
 
+/** ดึงข้อมูลโปรไฟล์ของพนักงานที่ผูกบัญชี LINE นี้ไว้ (สำหรับหน้าแก้ไขโปรไฟล์ตัวเองใน LIFF) */
+function liffGetMyProfile(lineUserId) {
+  var emp = _empByLine(lineUserId);
+  if (!emp) return { status: 'error', message: 'ยังไม่ได้ผูกบัญชี' };
+  return {
+    status: 'success',
+    data: {
+      prefix: emp.prefix || '', first_name: emp.first_name || '', last_name: emp.last_name || '',
+      nickname: emp.nickname || '',
+      photo_file_id: emp.photo_file_id || '',
+      photo_url: emp.photo_file_id ? ('https://drive.google.com/thumbnail?id=' + emp.photo_file_id + '&sz=w200') : ''
+    }
+  };
+}
+
+/** ให้พนักงานแก้ไขโปรไฟล์ตัวเองผ่าน LIFF ได้เฉพาะ ชื่อ/นามสกุล/ชื่อเล่น/รูป — ฟิลด์อื่น (แผนก/รหัส/ฯลฯ) ต้องแก้จากหลังบ้านเท่านั้น */
+function liffUpdateProfile(lineUserId, obj) {
+  try {
+    if (!obj.first_name || !obj.last_name) return { status: 'error', message: 'กรุณากรอกชื่อ-นามสกุล' };
+    var rows = _readAll('Employees');
+    for (var i = 0; i < rows.length; i++) {
+      var e = rows[i].data;
+      if (e.line_user_id === lineUserId && e.line_linked) {
+        e.first_name = obj.first_name;
+        e.last_name = obj.last_name;
+        e.nickname = obj.nickname || '';
+        if (obj.photo_file_id) e.photo_file_id = obj.photo_file_id;
+        e.updated_at = _now();
+        _update('Employees', rows[i].rowIndex, e);
+        return { status: 'success', message: 'บันทึกโปรไฟล์แล้ว', name: (e.prefix || '') + e.first_name + ' ' + e.last_name };
+      }
+    }
+    return { status: 'error', message: 'ยังไม่ได้ผูกบัญชี' };
+  } catch (err) {
+    logError(err.toString(), 'liffUpdateProfile');
+    return { status: 'error', message: err.toString() };
+  }
+}
+
 function liffUploadAttachment(lineUserId, base64Data, filename, mimeType) {
   var emp = _empByLine(lineUserId);
   if (!emp) return { status: 'error', message: 'ยังไม่ได้ผูกบัญชี' };
@@ -1810,7 +2110,19 @@ function liffSubmitLeave(lineUserId, obj) {
 
     var startHalf = obj.start_half || 'full';
     var endHalf = obj.end_half || 'full';
-    var total = _calcLeaveDays(obj.start_date, obj.end_date, startHalf, endHalf);
+
+    if (startHalf === 'hourly') {
+      if (!obj.start_time || !obj.end_time) return { status: 'error', message: 'กรุณาระบุเวลาเริ่มและเวลาสิ้นสุด' };
+      if (_timeToMinutes(obj.start_time) === null || _timeToMinutes(obj.end_time) === null) {
+        return { status: 'error', message: 'รูปแบบเวลาไม่ถูกต้อง' };
+      }
+      if (obj.end_date < obj.start_date) return { status: 'error', message: 'วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม' };
+      if (obj.start_date === obj.end_date && _timeToMinutes(obj.end_time) <= _timeToMinutes(obj.start_time)) {
+        return { status: 'error', message: 'เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม' };
+      }
+    }
+
+    var total = _calcLeaveDays(obj.start_date, obj.end_date, startHalf, endHalf, obj.start_time, obj.end_time);
     if (total <= 0) return { status: 'error', message: 'ช่วงวันที่เลือกไม่มีวันทำงาน' };
 
     var year = parseInt(obj.start_date.substring(0, 4), 10);
@@ -1830,6 +2142,8 @@ function liffSubmitLeave(lineUserId, obj) {
       department_id: emp.department_id || '',
       leave_type_id: type.id, leave_type_name: type.name,
       start_date: obj.start_date, end_date: obj.end_date,
+      start_time: startHalf === 'hourly' ? obj.start_time : '',
+      end_time: startHalf === 'hourly' ? obj.end_time : '',
       start_half: startHalf, end_half: endHalf, total_days: total,
       reason: obj.reason || '', contact_during_leave: obj.contact_during_leave || '',
       attachment_file_ids: obj.attachment_file_ids || [],
@@ -1856,32 +2170,77 @@ function _lineToken() {
   return c ? (c.data.line_channel_access_token || '') : '';
 }
 
+/** ส่ง push message ผ่าน LINE — คืนค่า {status, message} เสมอ เพื่อให้ตรวจสอบผลจริงได้ (แทนที่จะเงียบเมื่อ LINE ปฏิเสธ) */
 function _linePush(to, messages) {
   var token = _lineToken();
-  if (!token || !to) return;
+  if (!token) return { status: 'error', message: 'ยังไม่ได้ตั้งค่า LINE Channel Access Token' };
+  if (!to) return { status: 'error', message: 'ไม่มี LINE userId ปลายทาง' };
   try {
-    UrlFetchApp.fetch('https://api.line.me/v2/bot/message/push', {
+    var res = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/push', {
       method: 'post',
       contentType: 'application/json',
       headers: { 'Authorization': 'Bearer ' + token },
       payload: JSON.stringify({ to: to, messages: messages }),
       muteHttpExceptions: true
     });
-  } catch (err) { logError(err.toString(), '_linePush'); }
+    var code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+      var body = res.getContentText();
+      logError('LINE push ล้มเหลว (HTTP ' + code + '): ' + body, '_linePush');
+      return { status: 'error', message: 'LINE ปฏิเสธการส่ง (' + code + '): ' + body };
+    }
+    return { status: 'success', message: 'ส่งสำเร็จ' };
+  } catch (err) {
+    logError(err.toString(), '_linePush');
+    return { status: 'error', message: err.toString() };
+  }
 }
 
 function _lineReply(replyToken, messages) {
   var token = _lineToken();
   if (!token || !replyToken) return;
   try {
-    UrlFetchApp.fetch('https://api.line.me/v2/bot/message/reply', {
+    var res = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/reply', {
       method: 'post',
       contentType: 'application/json',
       headers: { 'Authorization': 'Bearer ' + token },
       payload: JSON.stringify({ replyToken: replyToken, messages: messages }),
       muteHttpExceptions: true
     });
+    var code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+      logError('LINE reply ล้มเหลว (HTTP ' + code + '): ' + res.getContentText(), '_lineReply');
+    }
   } catch (err) { logError(err.toString(), '_lineReply'); }
+}
+
+/**
+ * LINE userId ของบัญชีผู้ใช้ระบบ (Users) — ใช้ line_user_id ของ Users เอง ถ้ามี
+ * ถ้าไม่มี (บัญชีนี้ยังไม่เคยตั้งค่า) แต่ผูกกับพนักงาน (employee_id) ที่ผูก LINE ไว้แล้ว (ผ่าน LIFF) ให้ใช้ของพนักงานแทน
+ */
+function _userLineId(u) {
+  if (u.line_user_id) return u.line_user_id;
+  if (u.employee_id) {
+    var emp = _empById(u.employee_id);
+    if (emp && emp.line_linked && emp.line_user_id) return emp.line_user_id;
+  }
+  return '';
+}
+
+/** หา Users record จาก LINE userId — เช็คทั้ง line_user_id ของ Users เองและผ่านพนักงานที่ผูกไว้ (employee_id) */
+function _userByLineId(lineUserId) {
+  var users = _readAll('Users').map(function (r) { return r.data; });
+  var i;
+  for (i = 0; i < users.length; i++) {
+    if (users[i].active && users[i].line_user_id === lineUserId) return users[i];
+  }
+  var emp = _empByLine(lineUserId);
+  if (emp) {
+    for (i = 0; i < users.length; i++) {
+      if (users[i].active && users[i].employee_id === emp.id) return users[i];
+    }
+  }
+  return null;
 }
 
 /** รายชื่อ lineUserId ของผู้อนุมัติในระดับที่กำหนด */
@@ -1900,7 +2259,9 @@ function _approverLineIds(req, level, cfg) {
           var userRows = _readAll('Users');
           userRows.forEach(function(ur){
             var u = ur.data;
-            if (headIds.indexOf(u.id) !== -1 && u.line_user_id) ids.push(u.line_user_id);
+            if (headIds.indexOf(u.id) === -1 || !u.active) return;
+            var lid = _userLineId(u);
+            if (lid && ids.indexOf(lid) === -1) ids.push(lid);
           });
         }
         break;
@@ -1911,9 +2272,10 @@ function _approverLineIds(req, level, cfg) {
   // Users ที่ role ตรง + ผูก LINE (และ admin เสมอ)
   _readAll('Users').forEach(function (r) {
     var u = r.data;
-    if (!u.active || !u.line_user_id) return;
+    if (!u.active) return;
     if (u.role === role || u.role === 'admin') {
-      if (ids.indexOf(u.line_user_id) === -1) ids.push(u.line_user_id);
+      var lid = _userLineId(u);
+      if (lid && ids.indexOf(lid) === -1) ids.push(lid);
     }
   });
   return ids;
@@ -1927,6 +2289,12 @@ function _fmtDateTH(iso) {
 }
 
 function _rangeText(req) {
+  if (req.start_half === 'hourly') {
+    if (req.start_date === req.end_date) {
+      return _fmtDateTH(req.start_date) + ' (' + (req.start_time || '') + '-' + (req.end_time || '') + ' น.)';
+    }
+    return _fmtDateTH(req.start_date) + ' ' + (req.start_time || '') + ' น. - ' + _fmtDateTH(req.end_date) + ' ' + (req.end_time || '') + ' น.';
+  }
   var t = _fmtDateTH(req.start_date);
   if (req.start_date !== req.end_date) t += ' - ' + _fmtDateTH(req.end_date);
   if (req.start_half === 'morning') t += ' (ครึ่งเช้า)';
@@ -2055,7 +2423,7 @@ var LIFF_API_WHITELIST = {
   liffGetLeaveTypes: true, liffGetBalances: true, liffPreviewDays: true,
   liffUploadAttachment: true, liffSubmitLeave: true, liffGetHistory: true,
   liffCancelLeave: true, liffGetLeaveDetail: true, liffGetHolidays: true,
-  liffGetMyStats: true
+  liffGetMyStats: true, liffGetMyProfile: true, liffUpdateProfile: true
 };
 
 function doPost(e) {
@@ -2100,11 +2468,8 @@ function _handlePostback(ev) {
   var lineUserId = ev.source.userId;
 
   if (q.action === 'approve' || q.action === 'reject') {
-    // หา User ที่ผูก LINE นี้
-    var actor = null;
-    _readAll('Users').forEach(function (r) {
-      if (r.data.line_user_id === lineUserId && r.data.active) actor = r.data;
-    });
+    // หา User ที่ผูก LINE นี้ (โดยตรง หรือผ่านพนักงานที่ผูกไว้)
+    var actor = _userByLineId(lineUserId);
     if (!actor) {
       _lineReply(ev.replyToken, [{ type: 'text', text: 'บัญชี LINE นี้ไม่มีสิทธิ์อนุมัติ (ต้องเป็นผู้อนุมัติที่ผูก LINE ในระบบ)' }]);
       return;
@@ -2142,8 +2507,10 @@ function _handleFollow(ev) {
 /** ทดสอบส่ง push หา lineUserId (รันจาก editor หรือเรียกจากตั้งค่า) */
 function testLinePush(token, lineUserId) {
   _auth(token);
-  _linePush(lineUserId, [{ type: 'text', text: 'ทดสอบการแจ้งเตือนจากระบบลาออนไลน์ ✓' }]);
-  return { status: 'success', message: 'ส่งข้อความทดสอบแล้ว' };
+  if (!lineUserId) return { status: 'error', message: 'กรุณาวาง LINE userId ก่อน' };
+  var r = _linePush(lineUserId, [{ type: 'text', text: 'ทดสอบการแจ้งเตือนจากระบบลาออนไลน์ ✓' }]);
+  if (r.status === 'error') return r;
+  return { status: 'success', message: 'ส่งข้อความทดสอบแล้ว (LINE ตอบรับเรียบร้อย — ถ้ายังไม่เห็นข้อความ ให้เช็คว่าแอดเพื่อน OA นี้แล้วและ userId ถูกต้อง)' };
 }
 
 // ============================================================

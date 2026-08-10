@@ -273,7 +273,7 @@
                 <div class="col-md-5">
                   <div class="input-group">
                     <span class="input-group-text bg-white"><i class="fi fi-rr-search"></i></span>
-                    <input class="form-control" id="empSearch" placeholder="ค้นหาชื่อ / รหัส / ตำแหน่ง">
+                    <input class="form-control" id="empSearch" placeholder="ค้นหาชื่อ / รหัส">
                   </div>
                 </div>
                 <div class="col-md-4">
@@ -295,7 +295,7 @@
               <div class="table-responsive">
                 <table class="table align-middle mb-0">
                   <thead class="table-light"><tr>
-                    <th>พนักงาน</th><th>รหัส</th><th>แผนก</th><th>ตำแหน่ง</th>
+                    <th>พนักงาน</th><th>รหัส</th><th>แผนก</th>
                     <th class="text-center">LINE</th><th class="text-center">สถานะ</th><th class="text-end">จัดการ</th>
                   </tr></thead>
                   <tbody id="tblEmp"></tbody>
@@ -326,7 +326,7 @@
                   <table class="table align-middle mb-0">
                     <thead class="table-light"><tr>
                       <th>ประเภท</th><th>รหัส</th><th class="text-center">โควตา/ปี (วัน)</th>
-                      <th class="text-center">แนบไฟล์</th><th class="text-center">ครึ่งวัน</th>
+                      <th class="text-center">แนบไฟล์</th>
                       <th class="text-center">สถานะ</th><th class="text-end">จัดการ</th>
                     </tr></thead>
                     <tbody id="tblLeaveType"></tbody>
@@ -456,7 +456,7 @@
                 </div>
               </div>
 
-              <div class="panel">
+              <div class="panel mb-3">
                 <div class="panel-h">ไฟล์/Google Drive</div>
                 <div class="panel-b">
                   <label class="form-label">Folder ID (สำหรับเก็บโลโก้/ไฟล์แนบ)</label>
@@ -465,6 +465,31 @@
                     <button class="btn btn-ghost" id="btnCreateFolder">สร้างให้</button>
                   </div>
                   <small class="text-muted">วางเฉพาะ ID ของโฟลเดอร์ ไม่ต้องวางลิงก์เต็ม</small>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-h d-flex justify-content-between align-items-center">
+                  <span>โทนสีระบบ</span>
+                  <button class="btn btn-ghost btn-sm" id="btnResetTheme" type="button">รีเซ็ตค่าเริ่มต้น</button>
+                </div>
+                <div class="panel-b">
+                  <div class="row g-3">
+                    <div class="col-6">
+                      <label class="form-label">สีหลัก (Brand)</label>
+                      <div class="d-flex align-items-center gap-2">
+                        <input type="color" class="form-control form-control-color" id="cfgBrandColor" title="เลือกสีหลัก">
+                        <small class="text-muted">ปุ่ม/แถบเมนู/หัวข้อ</small>
+                      </div>
+                    </div>
+                    <div class="col-6">
+                      <label class="form-label">สีเน้น (Accent)</label>
+                      <div class="d-flex align-items-center gap-2">
+                        <input type="color" class="form-control form-control-color" id="cfgAccentColor" title="เลือกสีเน้น">
+                        <small class="text-muted">ปุ่มหลัก/ไอคอนเด่น</small>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -526,12 +551,6 @@
                     <div class="col-md-6">
                       <label class="form-label">เวลาทำงาน</label>
                       <input type="text" class="form-control" id="cfgWorkHours" placeholder="08:00-17:00">
-                    </div>
-                    <div class="col-md-6 d-flex align-items-end">
-                      <div class="form-check form-switch me-3">
-                        <input class="form-check-input" type="checkbox" id="cfgHalfDay">
-                        <label class="form-check-label" for="cfgHalfDay">อนุญาตลาครึ่งวัน</label>
-                      </div>
                     </div>
                     <div class="col-md-6">
                       <div class="form-check form-switch">
@@ -836,11 +855,20 @@
       <div class="row g-2">
         <div class="col-8"><label class="form-label">ชื่อประเภท</label><input class="form-control" id="ltName"></div>
         <div class="col-4"><label class="form-label">รหัส</label><input class="form-control" id="ltCode" placeholder="SICK"></div>
-        <div class="col-6"><label class="form-label">โควตา/ปี (วัน)</label><input type="number" class="form-control" id="ltQuota" value="0"></div>
+        <div class="col-6"><label class="form-label">หน่วยโควตา</label>
+          <select class="form-select" id="ltQuotaUnit">
+            <option value="days">วัน/ปี</option>
+            <option value="hours">ชั่วโมง/สัปดาห์</option>
+          </select>
+        </div>
         <div class="col-6"><label class="form-label">สี</label><input type="color" class="form-control form-control-color w-100" id="ltColor" value="#3b3f9e"></div>
+        <div class="col-6" id="ltQuotaDaysBox"><label class="form-label">โควตา/ปี (วัน)</label><input type="number" class="form-control" id="ltQuota" value="0"></div>
+        <div class="col-6 d-none" id="ltQuotaHoursBox"><label class="form-label">โควตา/สัปดาห์ (ชั่วโมง)</label>
+          <input type="number" step="0.5" class="form-control" id="ltQuotaHours" value="0">
+          <small class="text-muted">รวมทั้งปี ≈ <span id="ltQuotaHoursYear">0</span> ชม.</small>
+        </div>
         <div class="col-12 mt-2">
           <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="ltAttach"><label class="form-check-label" for="ltAttach">ต้องแนบเอกสาร</label></div>
-          <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="ltHalf" checked><label class="form-check-label" for="ltHalf">ลาครึ่งวันได้</label></div>
           <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="ltActive" checked><label class="form-check-label" for="ltActive">เปิดใช้งาน</label></div>
         </div>
         <div class="col-12">
@@ -911,16 +939,21 @@
             <div class="col-4"><label class="form-label">ชื่อ</label><input class="form-control" id="empFirst"></div>
             <div class="col-4"><label class="form-label">นามสกุล</label><input class="form-control" id="empLast"></div>
             <div class="col-4"><label class="form-label">ชื่อเล่น</label><input class="form-control" id="empNick"></div>
-            <div class="col-4"><label class="form-label">รหัสพนักงาน</label><input class="form-control" id="empCode"></div>
+            <div class="col-4"><label class="form-label">รหัสพนักงาน</label><input class="form-control" id="empCode" placeholder="เว้นว่างให้ระบบสร้างให้"></div>
             <div class="col-4"><label class="form-label">ประเภทพนักงาน</label>
               <select class="form-select" id="empType"><option>ประจำ</option><option>ชั่วคราว</option><option>รายวัน</option></select></div>
           </div>
         </div>
         <div class="col-md-6"><label class="form-label">แผนก</label><select class="form-select" id="empDept"><option value="">- เลือก -</option></select></div>
-        <div class="col-md-6"><label class="form-label">ตำแหน่ง</label><input class="form-control" id="empPos"></div>
-        <div class="col-md-4"><label class="form-label">เบอร์โทร (ใช้ผูก LINE)</label><input class="form-control" id="empPhone"></div>
-        <div class="col-md-4"><label class="form-label">อีเมล</label><input class="form-control" id="empEmail"></div>
-        <div class="col-md-4"><label class="form-label">วันเริ่มงาน</label><input type="date" class="form-control" id="empStart"></div>
+        <div class="col-md-6 d-none" id="empDeptOtherBox"><label class="form-label">ระบุชื่อแผนก</label><input class="form-control" id="empDeptOther" placeholder="พิมพ์ชื่อแผนกใหม่"></div>
+        <div class="col-md-6"><label class="form-label">เบอร์โทร (ใช้ผูก LINE)</label><input class="form-control" id="empPhone"></div>
+        <div class="col-md-6"><label class="form-label">อีเมล</label><input class="form-control" id="empEmail"></div>
+        <div class="col-12 d-none" id="empLineBox">
+          <div class="alert alert-light border d-flex justify-content-between align-items-center py-2 mb-0">
+            <span>สถานะ LINE <span class="badge ms-1" id="empLineBadge">-</span> <code class="ms-1 small text-muted d-none" id="empLineUid"></code></span>
+            <button type="button" class="btn btn-sm btn-outline-danger d-none" id="btnEmpUnlink"><i class="fi fi-rr-link-slash me-1"></i>ปลดผูก LINE</button>
+          </div>
+        </div>
         <div class="col-12">
           <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="empActive" checked><label class="form-check-label" for="empActive">ทำงานอยู่</label></div>
         </div>
@@ -959,13 +992,19 @@
           <small class="text-muted" id="lvRemain"></small>
         </div>
         <div class="col-md-4"><label class="form-label">รูปแบบ</label>
-          <select class="form-select" id="lvMode"><option value="full">เต็มวัน</option><option value="morning">ครึ่งวันเช้า</option><option value="afternoon">ครึ่งวันบ่าย</option></select></div>
+          <select class="form-select" id="lvMode">
+            <option value="full">เต็มวัน</option>
+            <option value="hourly">รายชั่วโมง</option>
+          </select></div>
         <div class="col-md-4"><label class="form-label">วันที่เริ่ม</label><input type="date" class="form-control" id="lvStart"></div>
         <div class="col-md-4"><label class="form-label">วันที่สิ้นสุด</label><input type="date" class="form-control" id="lvEnd"></div>
+        <div class="col-md-6 d-none" id="lvTimeBox1"><label class="form-label">เวลาเริ่มลา</label><input type="time" class="form-control" id="lvStartTime"></div>
+        <div class="col-md-6 d-none" id="lvTimeBox2"><label class="form-label">เวลาสิ้นสุดการลา</label><input type="time" class="form-control" id="lvEndTime"></div>
         <div class="col-12">
           <div class="alert alert-light border d-flex justify-content-between align-items-center mb-0 py-2">
-            <span>จำนวนวันลา</span><b class="fs-5" id="lvDays">-</b>
+            <span id="lvDaysLabel">จำนวนวันลา</span><b class="fs-5" id="lvDays">-</b>
           </div>
+          <small class="text-danger" id="lvDaysHint"></small>
         </div>
         <div class="col-12"><label class="form-label">เหตุผลการลา</label><textarea class="form-control" id="lvReason" rows="2"></textarea></div>
         <div class="col-md-6"><label class="form-label">ผู้ติดต่อ/เบอร์ระหว่างลา</label><input class="form-control" id="lvContact"></div>
@@ -1014,7 +1053,7 @@
           <tbody id="csvBody"></tbody>
         </table>
       </div>
-      <div class="mt-2 small text-muted">คอลัมน์ที่รองรับ: ชื่อ, นามสกุล, คำนำหน้า, ชื่อเล่น, รหัสพนักงาน, แผนก, ตำแหน่ง, ประเภท, เบอร์โทร, อีเมล, วันเริ่มงาน</div>
+      <div class="mt-2 small text-muted">คอลัมน์ที่รองรับ: ชื่อ, นามสกุล, คำนำหน้า, ชื่อเล่น, รหัสพนักงาน, แผนก, ประเภท, เบอร์โทร, อีเมล</div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" data-bs-dismiss="modal">ยกเลิก</button>
@@ -1057,6 +1096,45 @@
     </div>
     <div class="modal-footer"><button class="btn btn-ghost" data-bs-dismiss="modal">ยกเลิก</button>
       <button class="btn btn-accent" id="btnSaveUser">บันทึก</button></div>
+  </div></div></div>
+
+  <!-- ตั้งพนักงานเป็นผู้ใช้ระบบ -->
+  <div class="modal fade" id="modalPromote" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title" id="promoteModalTitle">ตั้งเป็นผู้ใช้ระบบ</h5>
+      <button class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <input type="hidden" id="promoEmpId">
+      <div class="alert alert-light border py-2 mb-3">
+        <b id="promoEmpName"></b><br>
+        <small class="text-muted">กำหนดบทบาทและสิทธิ์เข้าสู่ระบบให้พนักงานคนนี้ ระบบจะสร้าง/อัปเดตบัญชีในหน้า "จัดการผู้ใช้" ให้อัตโนมัติ</small>
+      </div>
+      <div class="row g-3">
+        <div class="col-md-6"><label class="form-label">บทบาท</label>
+          <select class="form-select" id="promoRole">
+            <option value="admin">ผู้ดูแลระบบ (admin)</option>
+            <option value="hr">ฝ่ายบุคคล (hr)</option>
+            <option value="supervisor">หัวหน้างาน (supervisor)</option>
+          </select>
+        </div>
+        <div class="col-md-6"><label class="form-label">ชื่อผู้ใช้ (username)</label><input class="form-control" id="promoUsername" placeholder="ตัวพิมพ์เล็ก ไม่มีช่องว่าง" autocomplete="off"></div>
+        <div class="col-md-6">
+          <label class="form-label" id="promoPwLabel">รหัสผ่าน</label>
+          <div class="input-group">
+            <input type="password" class="form-control" id="promoPassword" autocomplete="new-password" placeholder="••••••••">
+            <button class="btn btn-toggle" type="button" id="btnTogglePromoPw"><i class="fi fi-rr-eye"></i></button>
+          </div>
+          <small class="text-muted" id="promoPwHint">ปล่อยว่างเพื่อใช้รหัสผ่านเดิม</small>
+        </div>
+        <div class="col-md-6 d-flex align-items-end pb-1">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="promoActive" checked>
+            <label class="form-check-label" for="promoActive">เปิดใช้งานบัญชี</label>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-ghost" data-bs-dismiss="modal">ยกเลิก</button>
+      <button class="btn btn-accent" id="btnSavePromote">บันทึก</button></div>
   </div></div></div>
 
   <!-- รายละเอียดใบลา -->
