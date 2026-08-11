@@ -2,7 +2,7 @@
 /* ============================================================
    USERS — CRUD for system accounts (admin only)
    ============================================================ */
-var USR = { list: [] };
+var USR = { list: [], employees: [] };
 
 var ROLE_LABELS = { admin: 'ผู้ดูแลระบบ', hr: 'ฝ่ายบุคคล (HR)', supervisor: 'หัวหน้างาน' };
 var ROLE_COLORS = { admin: 'text-bg-danger', hr: 'text-bg-primary', supervisor: 'text-bg-warning' };
@@ -11,6 +11,7 @@ $(document).ready(function(){
   $('#btnAddUser').on('click', function(){ openUser(null); });
   $('#btnSaveUser').on('click', saveUser);
   $('#btnReloadAudit').on('click', loadAudit);
+  $('#usrEmployee').on('change', updateEmpWarn);
   $('#btnToggleUsrPw').on('click', function(){
     var inp = $('#usrPassword');
     var isText = inp.attr('type') === 'text';
@@ -19,7 +20,34 @@ $(document).ready(function(){
   });
 });
 
-window.PAGE_HOOKS.users = function(){ loadUsers(); loadAudit(); };
+window.PAGE_HOOKS.users = function(){ loadUsers(); loadAudit(); loadEmployeeOptions(); };
+
+// รายชื่อพนักงานสำหรับช่อง "ผูกกับพนักงาน" — โหลดไว้ล่วงหน้าเพื่อให้เปิด modal แล้วเลือกได้ทันที
+function loadEmployeeOptions(){
+  return api('getEmployeesSimple', APP.token).then(function(r){
+    USR.employees = (r.data || []);
+  }).catch(function(){});
+}
+
+// ซ่อนพนักงานที่ถูกบัญชีอื่นผูกไว้แล้ว (พนักงาน 1 คนผูกได้บัญชีเดียว)
+function fillEmployeeSelect(u, isEdit){
+  var takenBy = {};
+  USR.list.forEach(function(x){ if(x.employee_id) takenBy[x.employee_id] = x.id; });
+  var opts = '<option value="">— ไม่ผูก (บัญชีเข้าเว็บอย่างเดียว) —\x3c/option>';
+  USR.employees.forEach(function(e){
+    if(takenBy[e.id] && (!isEdit || takenBy[e.id] !== u.id)) return;
+    opts += '<option value="' + _esc(e.id) + '">' + _esc(e.name)
+          + (e.emp_code ? ' (' + _esc(e.emp_code) + ')' : '')
+          + (e.line_linked ? ' · ผูก LINE แล้ว' : ' · ยังไม่ผูก LINE')
+          + '\x3c/option>';
+  });
+  $('#usrEmployee').html(opts).val(isEdit ? (u.employee_id || '') : '');
+  updateEmpWarn();
+}
+
+function updateEmpWarn(){
+  $('#usrNoEmpWarn').toggleClass('d-none', !!$('#usrEmployee').val());
+}
 
 var AUDIT_LABELS = {
   LOGIN: 'เข้าสู่ระบบ', APPROVE_LEAVE: 'อนุมัติใบลา', REJECT_LEAVE: 'ไม่อนุมัติใบลา',
@@ -56,7 +84,7 @@ function loadAudit(){
 function _findUser(id){ return USR.list.filter(function(x){ return x.id === id; })[0]; }
 
 function loadUsers(){
-  tblSkel('#tblUsers', 6);
+  tblSkel('#tblUsers', 7);
   api('getUsers', APP.token).then(function(r){
     if(r.status !== 'success'){ toast('error', r.message); return; }
     USR.list = r.data;
@@ -67,7 +95,7 @@ function loadUsers(){
 function renderUsers(){
   var html = '';
   if(!USR.list.length){
-    html = '<tr><td colspan="6" class="text-center text-muted py-4">ไม่พบผู้ใช้\x3c/td>\x3c/tr>';
+    html = '<tr><td colspan="7" class="text-center text-muted py-4">ไม่พบผู้ใช้\x3c/td>\x3c/tr>';
   } else {
     USR.list.forEach(function(u){
       var isSelf = u.username === APP.user.username;
@@ -84,10 +112,22 @@ function renderUsers(){
         deleTag = '<br><span class="badge text-bg-info mt-1" title="มอบหมายให้อนุมัติแทน">'
           + '<i class="fi fi-rr-user-add">\x3c/i> แทนโดย ' + _esc(dele ? (dele.name || dele.username) : '?') + _esc(period) + '\x3c/span>';
       }
+      // บัญชีที่ไม่ผูกพนักงานจะผูก LINE ไม่ได้ ต้องเตือนให้เห็นตั้งแต่ในตาราง
+      var empTag;
+      if(!u.employee_id){
+        empTag = '<span class="badge text-bg-warning" title="ยังไม่ผูกพนักงาน — ผูก LINE ไม่ได้ จึงรับแจ้งเตือน/อนุมัติผ่าน LINE ไม่ได้">'
+          + '<i class="fi fi-rr-triangle-warning">\x3c/i> ยังไม่ผูกพนักงาน\x3c/span>';
+      } else if(u.employee_line_linked){
+        empTag = '<span class="badge text-bg-success"><i class="fi fi-rr-check">\x3c/i> ' + _esc(u.employee_name || '-') + '\x3c/span>';
+      } else {
+        empTag = '<span class="badge badge-soft" title="ผูกพนักงานแล้ว แต่พนักงานคนนี้ยังไม่ได้ผูก LINE">'
+          + _esc(u.employee_name || '-') + ' · ยังไม่ผูก LINE\x3c/span>';
+      }
       html += '<tr>'
         + '<td><b>' + _esc(u.name || '-') + '\x3c/b>' + (isSelf ? ' <span class="badge text-bg-light border text-muted ms-1">คุณ\x3c/span>' : '') + deleTag + '\x3c/td>'
         + '<td><code>' + _esc(u.username) + '\x3c/code>\x3c/td>'
         + '<td>' + roleBadge + '\x3c/td>'
+        + '<td>' + empTag + '\x3c/td>'
         + '<td class="text-muted">' + _esc(u.email || '-') + '\x3c/td>'
         + '<td class="text-center">' + activeBadge + '\x3c/td>'
         + '<td class="text-end">'
@@ -118,6 +158,10 @@ function openUser(u){
   $('#usrDelegate').html(opts).val(isEdit ? (u.delegate_user_id || '') : '');
   $('#usrDelegateFrom').val(isEdit ? (u.delegate_from || '') : '');
   $('#usrDelegateTo').val(isEdit ? (u.delegate_to || '') : '');
+
+  fillEmployeeSelect(u, isEdit);
+  // เผื่อเปิด modal ก่อนรายชื่อพนักงานโหลดเสร็จ — โหลดแล้วเติมตัวเลือกให้อีกรอบ
+  if(!USR.employees.length){ loadEmployeeOptions().then(function(){ fillEmployeeSelect(u, isEdit); }); }
 
   $('#usrId').val(isEdit ? u.id : '');
   $('#usrName').val(isEdit ? (u.name || '') : '');
@@ -151,6 +195,7 @@ function saveUser(){
 
   var payload = {
     id: id, name: name, username: username, role: role, email: email, active: active,
+    employee_id: $('#usrEmployee').val() || '',
     delegate_user_id: $('#usrDelegate').val() || '',
     delegate_from: delegateFrom, delegate_to: delegateTo
   };

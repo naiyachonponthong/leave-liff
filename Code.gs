@@ -795,8 +795,19 @@ function getUsers(token) {
   var user = _auth(token);
   if (user.role !== 'admin') return { status: 'error', message: 'ไม่มีสิทธิ์' };
   try {
+    // แนบข้อมูลพนักงานที่ผูกไว้มาด้วย เพื่อให้หน้าเว็บเตือนได้ว่าบัญชีไหนยังไม่ผูกพนักงาน (ผูก LINE ไม่ได้)
+    var emps = {};
+    _readAll('Employees').forEach(function (r) { emps[r.data.id] = r.data; });
+
     var rows = _readAll('Users');
-    var data = rows.map(function(r) { return _stripSecrets(r.data); });
+    var data = rows.map(function(r) {
+      var d = _stripSecrets(r.data);
+      var emp = d.employee_id ? emps[d.employee_id] : null;
+      d.employee_name = emp ? ((emp.prefix || '') + emp.first_name + ' ' + emp.last_name) : '';
+      d.employee_code = emp ? (emp.emp_code || '') : '';
+      d.employee_line_linked = emp ? !!emp.line_linked : false;
+      return d;
+    });
     return { status: 'success', data: data };
   } catch (err) {
     return { status: 'error', message: err.toString() };
@@ -815,6 +826,16 @@ function saveUser(token, payload) {
       var u = users[i].data;
       if (u.username === payload.username && u.id !== id) {
         return { status: 'error', message: 'ชื่อผู้ใช้นี้มีอยู่แล้ว' };
+      }
+    }
+
+    // พนักงาน 1 คนผูกได้กับบัญชีผู้ใช้เดียว ไม่งั้นการแจ้งเตือน LINE จะซ้ำและสิทธิ์จะสับสน
+    var empId = payload.employee_id || '';
+    if (empId) {
+      for (var k = 0; k < users.length; k++) {
+        if (users[k].data.employee_id === empId && users[k].data.id !== id) {
+          return { status: 'error', message: 'พนักงานคนนี้ผูกกับบัญชี "' + users[k].data.username + '" อยู่แล้ว' };
+        }
       }
     }
 
@@ -837,11 +858,14 @@ function saveUser(token, payload) {
       d.delegate_user_id = payload.delegate_user_id || '';
       d.delegate_from = payload.delegate_from || '';
       d.delegate_to = payload.delegate_to || '';
+      var wasLinked = d.employee_id || '';
+      d.employee_id = empId;
       if (payload.password) _setPassword(d, payload.password);
       d.updated_at = _now();
       _update('Users', found.rowIndex, d);
       _audit(actor.name, actor.role, 'SAVE_USER', d.username,
-             'แก้ไขบัญชี บทบาท=' + d.role + (payload.password ? ' (เปลี่ยนรหัสผ่าน)' : ''));
+             'แก้ไขบัญชี บทบาท=' + d.role + (payload.password ? ' (เปลี่ยนรหัสผ่าน)' : '')
+             + (empId !== wasLinked ? (empId ? ' (ผูกพนักงาน)' : ' (ยกเลิกผูกพนักงาน)') : ''));
       return { status: 'success', message: 'แก้ไขผู้ใช้เรียบร้อยแล้ว' };
     } else {
       // เพิ่มใหม่
@@ -853,7 +877,7 @@ function saveUser(token, payload) {
         name: payload.name,
         email: payload.email || '',
         line_user_id: '',
-        employee_id: '',
+        employee_id: empId,
         permissions: rolePerms,
         active: payload.active !== false,
         delegate_user_id: payload.delegate_user_id || '',
@@ -1746,7 +1770,12 @@ function getEmployees(token) {
 function getEmployeesSimple(token) {
   _auth(token);
   var data = _readAll('Employees').map(function (r) {
-    return { id: r.data.id, name: (r.data.prefix || '') + r.data.first_name + ' ' + r.data.last_name, emp_code: r.data.emp_code };
+    return {
+      id: r.data.id,
+      name: (r.data.prefix || '') + r.data.first_name + ' ' + r.data.last_name,
+      emp_code: r.data.emp_code,
+      line_linked: !!r.data.line_linked
+    };
   });
   return { status: 'success', data: data };
 }
