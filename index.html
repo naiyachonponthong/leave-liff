@@ -197,7 +197,15 @@
     <!-- ยื่นลา -->
     <div class="lf-body tab-pane" id="tab-new">
       <div class="card-soft">
-        <h6 class="mb-3">ยื่นใบลา</h6>
+        <h6 class="mb-3" id="nlFormTitle">ยื่นใบลา</h6>
+        <div class="hidden mb-3" id="nlEditBanner"
+             style="background:#fff7ed;border:1px solid #fdba74;border-radius:10px;padding:8px 12px;font-size:.8rem;color:#c2410c">
+          <div class="d-flex justify-content-between align-items-center gap-2">
+            <span><i class="fi fi-rr-edit me-1"></i>กำลังแก้ไขใบลา <b id="nlEditNo"></b></span>
+            <button class="btn btn-sm" id="btnCancelEdit"
+                    style="border:1px solid #c2410c;color:#c2410c;border-radius:8px;font-size:.72rem;padding:2px 8px">ยกเลิก</button>
+          </div>
+        </div>
         <label class="form-label">ประเภทการลา</label>
         <select class="form-select mb-1" id="nlType"></select>
         <small class="text-muted" id="nlRemain"></small>
@@ -290,7 +298,7 @@
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script>
-  var LF = { userId: null, types: [], balances: {}, be: true, histStatus: '' };
+  var LF = { userId: null, types: [], balances: {}, be: true, histStatus: '', editId: null };
   var HOL = { year: new Date().getFullYear(), month: new Date().getMonth() + 1, data: [] };
   var LF_HIST = [];
 
@@ -364,15 +372,8 @@
     $('#nlType').on('change', onTypeChange);
     $('#nlStart, #nlEnd, #nlStartTime, #nlEndTime').on('change', recalc);
     $('#nlAttach').on('change', uploadAttach);
-    $('.tabbar button').on('click', function(){
-      var t = $(this).data('tab');
-      $('.tabbar button').removeClass('on'); $(this).addClass('on');
-      $('.tab-pane').addClass('hidden'); $('#tab-' + t).removeClass('hidden');
-      if(t === 'history') loadHistory();
-      if(t === 'balance') loadBalances();
-      if(t === 'stats') loadStats();
-      if(t === 'holiday') loadHolidays();
-    });
+    $('.tabbar button').on('click', function(){ switchTab($(this).data('tab')); });
+    $('#btnCancelEdit').on('click', exitEditMode);
 
     $('#histFilter').on('click', '.chip', function(){
       $('#histFilter .chip').removeClass('active');
@@ -386,6 +387,16 @@
     $('#holNext').on('click', function(){ changeHolMonth(1); });
     $('#btnOpenProfile').on('click', openProfileSheet);
   });
+
+  function switchTab(t){
+    $('.tabbar button').removeClass('on');
+    $('.tabbar button[data-tab="' + t + '"]').addClass('on');
+    $('.tab-pane').addClass('hidden'); $('#tab-' + t).removeClass('hidden');
+    if(t === 'history') loadHistory();
+    if(t === 'balance') loadBalances();
+    if(t === 'stats') loadStats();
+    if(t === 'holiday') loadHolidays();
+  }
 
   function initLiff(){
     api('liffGetConfig').then(function(c){
@@ -521,8 +532,8 @@
     api('liffPreviewDays', start, end, 'hourly', 'hourly', st, et).then(function(r){
       if(r.days > 0){
         if(sameDay){
-          var hrs = Math.round(((toMin(et) - toMin(st)) / 60) * 100) / 100;
-          $('#nlDays').text(hrs + ' ชั่วโมง');
+          // ใช้ r.hours จากเซิร์ฟเวอร์ (หักพักเที่ยง/นอกเวลาทำงานแล้ว) ไม่ใช่ผลต่างเวลาดิบจากฝั่ง client
+          $('#nlDays').text(r.hours + ' ชั่วโมง');
         } else {
           $('#nlDays').text(r.days + ' วัน');
         }
@@ -556,6 +567,47 @@
     reader.readAsDataURL(file);
   }
 
+  /* ── โหมดแก้ไขใบลา (เฉพาะใบที่ยังไม่มีใครอนุมัติ) ── */
+  function startEditLeave(id){
+    var d = LF_HIST.filter(function(x){ return x.id === id; })[0];
+    if(!d){ toast('error','ไม่พบใบลา'); return; }
+    if(d.status !== 'SUBMITTED'){ toast('error','แก้ไขได้เฉพาะใบลาที่ยังไม่มีผู้อนุมัติดำเนินการ'); return; }
+
+    LF.editId = id;
+    $('#nlType').val(d.leave_type_id);
+    $('#nlStart').val(d.start_date); $('#nlEnd').val(d.end_date);
+    $('#nlStartTime').val(d.start_time || ''); $('#nlEndTime').val(d.end_time || '');
+    prefillLeaveTimes();
+    $('#nlReason').val(d.reason || '');
+    $('#nlContact').val(d.contact_during_leave || '');
+    $('#nlAttachId').val((d.attachment_file_ids && d.attachment_file_ids[0]) || '');
+    $('#nlAttach').val(''); $('#nlAttachStatus').html(''); $('#uploadBar').hide();
+
+    $('#nlFormTitle').text('แก้ไขใบลา');
+    $('#nlEditNo').text(d.request_no || '');
+    $('#nlEditBanner').removeClass('hidden');
+    $('#btnSubmitLeave').text('บันทึกการแก้ไข');
+
+    onTypeChange(); recalc();
+    switchTab('new');
+    window.scrollTo(0, 0);
+  }
+
+  function exitEditMode(){
+    LF.editId = null;
+    $('#nlFormTitle').text('ยื่นใบลา');
+    $('#nlEditBanner').addClass('hidden');
+    $('#btnSubmitLeave').text('ยื่นใบลา');
+    resetLeaveForm();
+  }
+
+  function resetLeaveForm(){
+    $('#nlReason').val(''); $('#nlContact').val(''); $('#nlAttachId').val(''); $('#nlAttach').val('');
+    $('#nlAttachStatus').html(''); $('#uploadBar').hide(); $('#nlDays').text('-'); $('#nlDaysHint').text('');
+    $('#nlStart').val(''); $('#nlEnd').val(''); $('#nlStartTime').val(''); $('#nlEndTime').val('');
+    prefillLeaveTimes();
+  }
+
   function submitLeave(){
     var tid = $('#nlType').val();
     var start = $('#nlStart').val(), st = $('#nlStartTime').val();
@@ -570,18 +622,28 @@
       contact_during_leave: $('#nlContact').val().trim(),
       attachment_file_ids: $('#nlAttachId').val() ? [$('#nlAttachId').val()] : []
     };
+
+    var editing = LF.editId;
     setBtnLoading('#btnSubmitLeave', true);
-    api('liffSubmitLeave', LF.userId, obj).then(function(r){
+    var call = editing
+      ? api('liffUpdateLeave', LF.userId, editing, obj)
+      : api('liffSubmitLeave', LF.userId, obj);
+
+    call.then(function(r){
       setBtnLoading('#btnSubmitLeave', false);
-      if(r.status === 'success'){
-        Swal.fire({ icon:'success', title:'ยื่นใบลาแล้ว', text:r.request_no, timer:1800, showConfirmButton:false });
-        $('#nlReason').val(''); $('#nlContact').val(''); $('#nlAttachId').val(''); $('#nlAttach').val('');
-        $('#nlAttachStatus').html(''); $('#uploadBar').hide(); $('#nlDays').text('-'); $('#nlDaysHint').text('');
-        $('#nlStart').val(''); $('#nlEnd').val(''); $('#nlStartTime').val(''); $('#nlEndTime').val('');
-        prefillLeaveTimes();
-        loadBalanceMap(onTypeChange);
-      } else { toast('error', r.message); }
-    }).catch(function(){ setBtnLoading('#btnSubmitLeave', false); toast('error','ส่งใบลาไม่สำเร็จ'); });
+      if(r.status !== 'success'){ toast('error', r.message); return; }
+      Swal.fire({
+        icon:'success',
+        title: editing ? 'แก้ไขใบลาแล้ว' : 'ยื่นใบลาแล้ว',
+        text: r.request_no, timer:1800, showConfirmButton:false
+      });
+      if(editing){ exitEditMode(); loadHistory(); }
+      else { resetLeaveForm(); }
+      loadBalanceMap(onTypeChange);
+    }).catch(function(){
+      setBtnLoading('#btnSubmitLeave', false);
+      toast('error', editing ? 'แก้ไขใบลาไม่สำเร็จ' : 'ส่งใบลาไม่สำเร็จ');
+    });
   }
 
   function loadHistory(){
@@ -590,6 +652,15 @@
       LF_HIST = r.data || [];
       renderHistFiltered();
     }).catch(function(){ $('#histList').html('<div class="text-center text-muted py-4">โหลดข้อมูลไม่สำเร็จ\x3c/div>'); });
+  }
+
+  // แสดงชั่วโมงสำหรับใบลารายชั่วโมง (แปลงจาก total_days ที่เซิร์ฟเวอร์คำนวณ หักพักเที่ยงแล้ว) แทนที่จะโชว์เป็นเศษของวัน
+  function fmtAmountLF(d){
+    if(d.start_half === 'hourly'){
+      var hrs = Math.round(Number(d.total_days) * (LF.hoursPerDay || 8) * 100) / 100;
+      return hrs + ' ชั่วโมง';
+    }
+    return d.total_days + ' วัน';
   }
 
   function renderHistFiltered(){
@@ -604,10 +675,16 @@
         + '<div class="d-flex justify-content-between align-items-start">'
         + '<div><b>' + esc(d.leave_type_name) + '\x3c/b><div class="no">' + esc(d.request_no) + '\x3c/div>\x3c/div>'
         + '<span class="badge-st" style="background:' + st[1] + '22;color:' + st[1] + '">' + st[0] + '\x3c/span>\x3c/div>'
-        + '<div class="small mt-1">' + range + ' · ' + d.total_days + ' วัน\x3c/div>'
+        + '<div class="small mt-1">' + range + ' · ' + fmtAmountLF(d) + '\x3c/div>'
         + (d.last_comment ? '<div class="small text-muted mt-1">หมายเหตุ: ' + esc(d.last_comment) + '\x3c/div>' : '')
         + (d.status === 'SUBMITTED' || d.status === 'L1_APPROVED'
-          ? '<button class="btn btn-sm w-100 mt-2" style="border:1px solid #ef4444;color:#ef4444;border-radius:10px;font-size:.78rem" onclick="event.stopPropagation();cancelLeave(\'' + d.id + '\')">ยกเลิกใบลา\x3c/button>'
+          ? '<div class="d-flex gap-2 mt-2">'
+            // แก้ไขได้เฉพาะตอนยังไม่มีใครอนุมัติ พออนุมัติระดับ 1 แล้วเหลือแค่ยกเลิก
+            + (d.status === 'SUBMITTED'
+              ? '<button class="btn btn-sm flex-fill" style="border:1px solid var(--brand);color:var(--brand);border-radius:10px;font-size:.78rem" onclick="event.stopPropagation();startEditLeave(\'' + d.id + '\')">แก้ไข\x3c/button>'
+              : '')
+            + '<button class="btn btn-sm flex-fill" style="border:1px solid #ef4444;color:#ef4444;border-radius:10px;font-size:.78rem" onclick="event.stopPropagation();cancelLeave(\'' + d.id + '\')">ยกเลิกใบลา\x3c/button>'
+            + '\x3c/div>'
           : '')
         + '\x3c/div>';
     });
@@ -683,7 +760,7 @@
       + '<b style="font-size:1rem">' + esc(d.leave_type_name) + '\x3c/b>'
       + '<span class="badge-st" style="background:' + st[1] + '22;color:' + st[1] + '">' + st[0] + '\x3c/span>\x3c/div>'
       + '<div class="small text-muted mb-3" style="font-size:.76rem">เลขที่ ' + esc(d.request_no||'') + '\x3c/div>'
-      + detRow('fi-rr-calendar', 'ช่วงวันลา', range + ' (' + d.total_days + ' วัน)')
+      + detRow('fi-rr-calendar', 'ช่วงวันลา', range + ' (' + fmtAmountLF(d) + ')')
       + detRow('fi-rr-clock', 'รูปแบบ', modeLabel);
     if(!slim){
       if(d.reason) h += detRow('fi-rr-memo', 'เหตุผล', d.reason);
@@ -698,8 +775,14 @@
       }
     }
     if(d.status === 'SUBMITTED' || d.status === 'L1_APPROVED'){
-      h += '<button class="btn btn-sm w-100 mt-3" style="border:1px solid #ef4444;color:#ef4444;border-radius:10px" '
-        + 'onclick="closeSheet();setTimeout(function(){cancelLeave(\'' + d.id + '\')},220)">ยกเลิกใบลา\x3c/button>';
+      h += '<div class="d-flex gap-2 mt-3">';
+      if(d.status === 'SUBMITTED'){
+        h += '<button class="btn btn-sm flex-fill" style="border:1px solid var(--brand);color:var(--brand);border-radius:10px" '
+          + 'onclick="closeSheet();setTimeout(function(){startEditLeave(\'' + d.id + '\')},220)">แก้ไข\x3c/button>';
+      }
+      h += '<button class="btn btn-sm flex-fill" style="border:1px solid #ef4444;color:#ef4444;border-radius:10px" '
+        + 'onclick="closeSheet();setTimeout(function(){cancelLeave(\'' + d.id + '\')},220)">ยกเลิกใบลา\x3c/button>'
+        + '\x3c/div>';
     }
     return h;
   }
