@@ -245,6 +245,8 @@ function initializeSheets() {
         level2_role: 'hr',
         work_days: ['MO', 'TU', 'WE', 'TH', 'FR'],
         work_hours: '08:00-17:00',
+        break_start: '12:00',
+        break_end: '13:00',
         theme_brand: CONFIG.THEME_BRAND,
         theme_accent: CONFIG.THEME_ACCENT,
         fiscal_start_month: 1,
@@ -981,6 +983,7 @@ function saveConfig(token, payload) {
     var d = c.data;
     var allow = ['app_name', 'line_channel_access_token', 'line_channel_secret', 'line_liff_id',
       'folder_id', 'approval_levels', 'level1_role', 'level2_role', 'work_days', 'work_hours',
+      'break_start', 'break_end',
       'fiscal_start_month', 'buddhist_era', 'notification_enabled',
       'email_notifications', 'telegram_bot_token', 'telegram_chat_id', 'maintenance_mode',
       'theme_brand', 'theme_accent'];
@@ -1322,18 +1325,42 @@ function _workHourSpan(cfg) {
   return { startMin: s, endMin: e };
 }
 
-/** ชั่วโมงทำงานต่อวัน คำนวณจากช่วง "เวลาทำงาน" ที่ตั้งค่าไว้ (เช่น "08:00-17:00" -> 9 ชม.) ถ้าตั้งค่าไม่ถูกต้องใช้ค่าเริ่มต้น */
+/**
+ * แปลง cfg.break_start/break_end เป็น {startMin, endMin} ของช่วงพักเที่ยง (หักออกจากการลารายชั่วโมง)
+ * ระบบที่ติดตั้งไว้ก่อนมีฟีเจอร์นี้จะยังไม่มีสองฟิลด์นี้เลย (undefined) — ใช้ค่าเริ่มต้น 12:00-13:00 ให้อัตโนมัติ
+ * ถ้าเปิดหน้าตั้งค่าแล้วเซฟโดยเว้นว่างไว้ (เป็น '' ไม่ใช่ undefined) ถือว่าตั้งใจปิดการหักพัก
+ */
+function _breakSpan(cfg) {
+  var bs = cfg.break_start, be = cfg.break_end;
+  if (bs === undefined && be === undefined) { bs = '12:00'; be = '13:00'; }
+  if (!bs || !be) return null;
+  var s = _timeToMinutes(bs), e = _timeToMinutes(be);
+  if (s === null || e === null || e <= s) return null;
+  return { startMin: s, endMin: e };
+}
+
+/** จำนวนนาทีที่สองช่วงเวลาทับกัน (0 ถ้าไม่ทับ) */
+function _overlapMinutes(aStart, aEnd, bStart, bEnd) {
+  var start = Math.max(aStart, bStart), end = Math.min(aEnd, bEnd);
+  return end > start ? end - start : 0;
+}
+
+/** ชั่วโมงทำงานต่อวัน = ช่วง "เวลาทำงาน" หักด้วยพักเที่ยง (ถ้ามี) ถ้าตั้งค่าไม่ถูกต้องใช้ค่าเริ่มต้น */
 function _hoursPerDay(cfg) {
   cfg = cfg || _getConfigRow().data;
   var span = _workHourSpan(cfg);
-  return span ? (span.endMin - span.startMin) / 60 : (CONFIG.HOURS_PER_DAY || 8);
+  if (!span) return CONFIG.HOURS_PER_DAY || 8;
+  var mins = span.endMin - span.startMin;
+  var brk = _breakSpan(cfg);
+  if (brk) mins -= _overlapMinutes(span.startMin, span.endMin, brk.startMin, brk.endMin);
+  return mins / 60;
 }
 
 /**
- * จำนวนวัน-เทียบเท่าของการลารายชั่วโมง ตั้งแต่ startDate+startTime ถึง endDate+endTime
- * รองรับช่วงข้ามวัน — แต่ละวันจะถูกตัดขอบเขตด้วยเวลาทำงานที่ตั้งค่าไว้ (cfg.work_hours) และนับเฉพาะวันทำงาน
+ * จำนวนนาทีที่ลาจริงของการลารายชั่วโมง ตั้งแต่ startDate+startTime ถึง endDate+endTime
+ * รองรับช่วงข้ามวัน — แต่ละวันจะถูกตัดขอบเขตด้วยเวลาทำงานที่ตั้งค่าไว้ (cfg.work_hours) หักพักเที่ยงออก และนับเฉพาะวันทำงาน
  */
-function _calcHourlyRange(startDate, endDate, startTime, endTime) {
+function _calcHourlyMinutes(startDate, endDate, startTime, endTime) {
   var s = _parseDate(startDate), e = _parseDate(endDate);
   if (e < s) return 0;
 
@@ -1342,6 +1369,7 @@ function _calcHourlyRange(startDate, endDate, startTime, endTime) {
   var hoursPerDay = _hoursPerDay(cfg);
   var workStart = span ? span.startMin : 0;
   var workEnd = span ? span.endMin : hoursPerDay * 60;
+  var brk = _breakSpan(cfg);
 
   var sameDay = startDate === endDate;
   var sMin = _timeToMinutes(startTime);
@@ -1363,11 +1391,22 @@ function _calcHourlyRange(startDate, endDate, startTime, endTime) {
       } else if (iso === endDate) {
         dayEnd = Math.min(workEnd, eMin);
       }
-      if (dayEnd > dayStart) totalMinutes += (dayEnd - dayStart);
+      if (dayEnd > dayStart) {
+        var mins = dayEnd - dayStart;
+        if (brk) mins -= _overlapMinutes(dayStart, dayEnd, brk.startMin, brk.endMin);
+        totalMinutes += Math.max(0, mins);
+      }
     }
     cur.setDate(cur.getDate() + 1);
   }
+  return totalMinutes;
+}
+
+/** จำนวนวัน-เทียบเท่าของการลารายชั่วโมง (นาทีที่ลาจริง / ชั่วโมงทำงานต่อวัน) */
+function _calcHourlyRange(startDate, endDate, startTime, endTime) {
+  var totalMinutes = _calcHourlyMinutes(startDate, endDate, startTime, endTime);
   if (totalMinutes <= 0) return 0;
+  var hoursPerDay = _hoursPerDay();
   return Math.round((totalMinutes / 60 / hoursPerDay) * 1000) / 1000;
 }
 
@@ -1418,7 +1457,11 @@ function _isWorkingDay(dateStr) {
 
 function previewLeaveDays(token, startDate, endDate, startHalf, endHalf, startTime, endTime) {
   _auth(token);
-  return { status: 'success', days: _calcLeaveDays(startDate, endDate, startHalf, endHalf, startTime, endTime) };
+  var out = { status: 'success', days: _calcLeaveDays(startDate, endDate, startHalf, endHalf, startTime, endTime) };
+  if (startHalf === 'hourly') {
+    out.hours = Math.round((_calcHourlyMinutes(startDate, endDate, startTime, endTime) / 60) * 100) / 100;
+  }
+  return out;
 }
 
 function _empById(id) {
@@ -2066,7 +2109,11 @@ function liffGetLeaveTypes() {
 }
 
 function liffPreviewDays(startDate, endDate, startHalf, endHalf, startTime, endTime) {
-  return { status: 'success', days: _calcLeaveDays(startDate, endDate, startHalf, endHalf, startTime, endTime) };
+  var out = { status: 'success', days: _calcLeaveDays(startDate, endDate, startHalf, endHalf, startTime, endTime) };
+  if (startHalf === 'hourly') {
+    out.hours = Math.round((_calcHourlyMinutes(startDate, endDate, startTime, endTime) / 60) * 100) / 100;
+  }
+  return out;
 }
 
 function _empByLine(lineUserId) {

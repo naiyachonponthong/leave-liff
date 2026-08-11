@@ -89,6 +89,8 @@ function loadSettings(){
     $('#cfgL2').val(c.level2_role || 'hr');
     $('#boxL2').toggle(String(c.approval_levels || 2) === '2');
     $('#cfgWorkHours').val(c.work_hours || '08:00-17:00');
+    $('#cfgBreakStart').val(c.break_start || '');
+    $('#cfgBreakEnd').val(c.break_end || '');
     $('#cfgBE').prop('checked', c.buddhist_era !== false);
     $('#cfgNotify').prop('checked', c.notification_enabled !== false);
     $('#cfgBrandColor').val(c.theme_brand || DEFAULT_BRAND_COLOR);
@@ -123,6 +125,8 @@ function saveSettings(){
     level2_role: $('#cfgL2').val(),
     work_days: days,
     work_hours: $('#cfgWorkHours').val().trim(),
+    break_start: $('#cfgBreakStart').val().trim(),
+    break_end: $('#cfgBreakEnd').val().trim(),
     buddhist_era: $('#cfgBE').is(':checked'),
     notification_enabled: $('#cfgNotify').is(':checked'),
     theme_brand: $('#cfgBrandColor').val(),

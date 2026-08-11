@@ -24,7 +24,9 @@ function _minutesBetween(startTime, endTime){
 
 function fmtLeaveAmount(d){
   if(d.start_half === 'hourly' && d.start_time && d.end_time){
-    var hrs = Math.round((_minutesBetween(d.start_time, d.end_time) / 60) * 100) / 100;
+    // d.total_days มาจากเซิร์ฟเวอร์ (หักพักเที่ยง/นอกเวลาทำงานแล้ว) แปลงกลับเป็นชั่วโมงด้วย hoursPerDay เดียวกัน
+    // ไม่คำนวณผลต่างเวลาดิบเองที่นี่ เพราะจะไม่หักพักเที่ยงให้
+    var hrs = Math.round(Number(d.total_days) * (APP.hoursPerDay || 8) * 100) / 100;
     return hrs + ' ชั่วโมง';
   }
   return d.total_days + ' วัน';
@@ -170,11 +172,11 @@ function recalcDays(){
     if(!st || !et){ $('#lvDays').text('-'); $('#lvDaysHint').text('กรุณาระบุเวลาเริ่มและเวลาสิ้นสุด'); return; }
     var mins = _minutesBetween(st, et);
     if(mins <= 0){ $('#lvDays').text('-'); $('#lvDaysHint').text('เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม'); return; }
-    var hrs = Math.round((mins / 60) * 100) / 100;
     $('#lvDaysHint').text('');
     api('previewLeaveDays', APP.token, start, end, 'hourly', 'hourly', st, et).then(function(r){
       if(r.status === 'success' && r.days > 0){
-        $('#lvDays').text(hrs + ' ชั่วโมง'); $('#lvDaysHint').text('');
+        // ใช้ r.hours จากเซิร์ฟเวอร์ (หักพักเที่ยง/นอกเวลาทำงานแล้ว) ไม่ใช่ผลต่างเวลาดิบจากฝั่ง client
+        $('#lvDays').text(r.hours + ' ชั่วโมง'); $('#lvDaysHint').text('');
       } else {
         $('#lvDays').text('-'); $('#lvDaysHint').text('วันที่เลือกไม่ใช่วันทำงาน (วันหยุด/สุดสัปดาห์)');
       }

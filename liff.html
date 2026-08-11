@@ -532,8 +532,8 @@
     api('liffPreviewDays', start, end, 'hourly', 'hourly', st, et).then(function(r){
       if(r.days > 0){
         if(sameDay){
-          var hrs = Math.round(((toMin(et) - toMin(st)) / 60) * 100) / 100;
-          $('#nlDays').text(hrs + ' ชั่วโมง');
+          // ใช้ r.hours จากเซิร์ฟเวอร์ (หักพักเที่ยง/นอกเวลาทำงานแล้ว) ไม่ใช่ผลต่างเวลาดิบจากฝั่ง client
+          $('#nlDays').text(r.hours + ' ชั่วโมง');
         } else {
           $('#nlDays').text(r.days + ' วัน');
         }
@@ -654,6 +654,15 @@
     }).catch(function(){ $('#histList').html('<div class="text-center text-muted py-4">โหลดข้อมูลไม่สำเร็จ\x3c/div>'); });
   }
 
+  // แสดงชั่วโมงสำหรับใบลารายชั่วโมง (แปลงจาก total_days ที่เซิร์ฟเวอร์คำนวณ หักพักเที่ยงแล้ว) แทนที่จะโชว์เป็นเศษของวัน
+  function fmtAmountLF(d){
+    if(d.start_half === 'hourly'){
+      var hrs = Math.round(Number(d.total_days) * (LF.hoursPerDay || 8) * 100) / 100;
+      return hrs + ' ชั่วโมง';
+    }
+    return d.total_days + ' วัน';
+  }
+
   function renderHistFiltered(){
     var list = LF.histStatus ? LF_HIST.filter(function(d){ return d.status === LF.histStatus; }) : LF_HIST;
     if(!list.length){ $('#histList').html('<div class="text-center text-muted py-4">ไม่มีรายการ\x3c/div>'); return; }
@@ -666,7 +675,7 @@
         + '<div class="d-flex justify-content-between align-items-start">'
         + '<div><b>' + esc(d.leave_type_name) + '\x3c/b><div class="no">' + esc(d.request_no) + '\x3c/div>\x3c/div>'
         + '<span class="badge-st" style="background:' + st[1] + '22;color:' + st[1] + '">' + st[0] + '\x3c/span>\x3c/div>'
-        + '<div class="small mt-1">' + range + ' · ' + d.total_days + ' วัน\x3c/div>'
+        + '<div class="small mt-1">' + range + ' · ' + fmtAmountLF(d) + '\x3c/div>'
         + (d.last_comment ? '<div class="small text-muted mt-1">หมายเหตุ: ' + esc(d.last_comment) + '\x3c/div>' : '')
         + (d.status === 'SUBMITTED' || d.status === 'L1_APPROVED'
           ? '<div class="d-flex gap-2 mt-2">'
@@ -751,7 +760,7 @@
       + '<b style="font-size:1rem">' + esc(d.leave_type_name) + '\x3c/b>'
       + '<span class="badge-st" style="background:' + st[1] + '22;color:' + st[1] + '">' + st[0] + '\x3c/span>\x3c/div>'
       + '<div class="small text-muted mb-3" style="font-size:.76rem">เลขที่ ' + esc(d.request_no||'') + '\x3c/div>'
-      + detRow('fi-rr-calendar', 'ช่วงวันลา', range + ' (' + d.total_days + ' วัน)')
+      + detRow('fi-rr-calendar', 'ช่วงวันลา', range + ' (' + fmtAmountLF(d) + ')')
       + detRow('fi-rr-clock', 'รูปแบบ', modeLabel);
     if(!slim){
       if(d.reason) h += detRow('fi-rr-memo', 'เหตุผล', d.reason);
