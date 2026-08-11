@@ -1125,10 +1125,31 @@
         <div class="col-12">
           <label class="form-label mb-1"><i class="fi fi-rr-id-badge me-1"></i>ผูกกับพนักงาน</label>
           <select class="form-select" id="usrEmployee"><option value="">— ไม่ผูก (บัญชีเข้าเว็บอย่างเดียว) —</option></select>
+
           <div class="alert alert-warning py-2 px-3 mt-2 mb-0 small d-none" id="usrNoEmpWarn">
             <i class="fi fi-rr-triangle-warning me-1"></i>
             บัญชีที่ไม่ผูกพนักงานจะ<b>ผูก LINE ไม่ได้</b> จึงไม่ได้รับแจ้งเตือนและกดอนุมัติผ่าน LINE ไม่ได้
-            (ต้องเข้าเว็บมากดอนุมัติเท่านั้น) — ถ้าคนนี้เป็นพนักงานบริษัท ให้เลือกชื่อจากรายการด้านบน
+            (ต้องเข้าเว็บมากดอนุมัติเท่านั้น) — ถ้าคนนี้เป็นพนักงานบริษัท ให้เลือก "สร้างทะเบียนพนักงานใหม่" ด้านบน
+          </div>
+
+          <div class="border rounded-3 p-3 mt-2 d-none" id="usrNewEmpBox" style="background:var(--brand-100,#f1f3fb)">
+            <div class="small text-muted mb-2">
+              <i class="fi fi-rr-info me-1"></i>ระบบจะสร้างทะเบียนพนักงานให้อัตโนมัติจากชื่อด้านบน พร้อมออกรหัสพนักงานและโควตาการลาให้เลย
+            </div>
+            <div class="row g-2">
+              <div class="col-md-4"><label class="form-label">คำนำหน้า</label>
+                <select class="form-select" id="usrNewEmpPrefix">
+                  <option>นาย</option><option>นาง</option><option>นางสาว</option>
+                </select>
+              </div>
+              <div class="col-md-8"><label class="form-label">แผนก</label>
+                <select class="form-select" id="usrNewEmpDept"><option value="">— ไม่ระบุ —</option></select>
+              </div>
+              <div class="col-12"><label class="form-label">เบอร์โทรศัพท์ <span class="text-danger">*</span></label>
+                <input class="form-control" id="usrNewEmpPhone" placeholder="08xxxxxxxx" inputmode="tel">
+                <small class="text-muted">จำเป็น — พนักงานต้องใช้เบอร์นี้คู่กับรหัสพนักงานตอนผูก LINE</small>
+              </div>
+            </div>
           </div>
         </div>
 

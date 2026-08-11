@@ -821,6 +821,9 @@ function saveUser(token, payload) {
     var id = payload.id || '';
     var users = _readAll('Users');
 
+    // ตรวจให้ครบก่อนสร้างอะไรลงชีต ไม่งั้นถ้า fail ทีหลังจะเหลือทะเบียนพนักงานค้างไว้
+    if (!id && !payload.password) return { status: 'error', message: 'กรุณาระบุรหัสผ่าน' };
+
     // ตรวจ username ซ้ำ
     for (var i = 0; i < users.length; i++) {
       var u = users[i].data;
@@ -837,6 +840,26 @@ function saveUser(token, payload) {
           return { status: 'error', message: 'พนักงานคนนี้ผูกกับบัญชี "' + users[k].data.username + '" อยู่แล้ว' };
         }
       }
+    }
+
+    // สร้างทะเบียนพนักงานให้พร้อมกันในขั้นตอนเดียว (ไม่ต้องไปเพิ่มซ้ำที่หน้าพนักงาน)
+    if (payload.create_employee) {
+      var ce = payload.create_employee;
+      // เบอร์โทรจำเป็น เพราะตอนผูก LINE พนักงานต้องกรอกรหัสพนักงาน + เบอร์โทรให้ตรงกัน
+      if (!ce.phone) return { status: 'error', message: 'กรุณาระบุเบอร์โทรของพนักงาน (ใช้ตอนผูก LINE)' };
+      var parts = String(payload.name || '').trim().split(/\s+/);
+      var firstName = parts.shift() || '';
+      if (!firstName) return { status: 'error', message: 'กรุณาระบุชื่อ-นามสกุล' };
+      var er = saveEmployee(token, {
+        prefix: ce.prefix || '',
+        first_name: firstName,
+        last_name: parts.join(' ') || '-',
+        department_id: ce.department_id || '',
+        phone: ce.phone,
+        email: payload.email || ''
+      });
+      if (er.status !== 'success') return er;
+      empId = er.id;
     }
 
     var rolePerms = (CONFIG.USER_ROLES[payload.role] || {}).permissions || [];
@@ -868,8 +891,7 @@ function saveUser(token, payload) {
              + (empId !== wasLinked ? (empId ? ' (ผูกพนักงาน)' : ' (ยกเลิกผูกพนักงาน)') : ''));
       return { status: 'success', message: 'แก้ไขผู้ใช้เรียบร้อยแล้ว' };
     } else {
-      // เพิ่มใหม่
-      if (!payload.password) return { status: 'error', message: 'กรุณาระบุรหัสผ่าน' };
+      // เพิ่มใหม่ (ตรวจรหัสผ่านไปแล้วตั้งแต่ต้นฟังก์ชัน)
       _append('Users', _setPassword({
         id: _uuid(),
         username: payload.username,
@@ -887,8 +909,14 @@ function saveUser(token, payload) {
         created_at: _now(),
         updated_at: _now()
       }, payload.password));
-      _audit(actor.name, actor.role, 'SAVE_USER', payload.username, 'สร้างบัญชีใหม่ บทบาท=' + payload.role);
-      return { status: 'success', message: 'เพิ่มผู้ใช้เรียบร้อยแล้ว' };
+      _audit(actor.name, actor.role, 'SAVE_USER', payload.username,
+             'สร้างบัญชีใหม่ บทบาท=' + payload.role + (payload.create_employee ? ' (สร้างทะเบียนพนักงานด้วย)' : ''));
+      return {
+        status: 'success',
+        message: payload.create_employee
+          ? 'เพิ่มผู้ใช้และทะเบียนพนักงานเรียบร้อยแล้ว'
+          : 'เพิ่มผู้ใช้เรียบร้อยแล้ว'
+      };
     }
   } catch (err) {
     logError(err.toString(), 'saveUser');

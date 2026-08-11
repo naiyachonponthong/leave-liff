@@ -2,7 +2,8 @@
 /* ============================================================
    USERS — CRUD for system accounts (admin only)
    ============================================================ */
-var USR = { list: [], employees: [] };
+var USR = { list: [], employees: [], departments: [] };
+var NEW_EMP = '__new__';
 
 var ROLE_LABELS = { admin: 'ผู้ดูแลระบบ', hr: 'ฝ่ายบุคคล (HR)', supervisor: 'หัวหน้างาน' };
 var ROLE_COLORS = { admin: 'text-bg-danger', hr: 'text-bg-primary', supervisor: 'text-bg-warning' };
@@ -22,18 +23,21 @@ $(document).ready(function(){
 
 window.PAGE_HOOKS.users = function(){ loadUsers(); loadAudit(); loadEmployeeOptions(); };
 
-// รายชื่อพนักงานสำหรับช่อง "ผูกกับพนักงาน" — โหลดไว้ล่วงหน้าเพื่อให้เปิด modal แล้วเลือกได้ทันที
+// รายชื่อพนักงาน + แผนก สำหรับช่อง "ผูกกับพนักงาน" — โหลดล่วงหน้าเพื่อให้เปิด modal แล้วเลือกได้ทันที
 function loadEmployeeOptions(){
-  return api('getEmployeesSimple', APP.token).then(function(r){
-    USR.employees = (r.data || []);
-  }).catch(function(){});
+  var a = api('getEmployeesSimple', APP.token).then(function(r){ USR.employees = r.data || []; });
+  var b = api('getDepartments', APP.token).then(function(r){ USR.departments = r.data || []; });
+  return Promise.all([a, b]).catch(function(){});
 }
 
 // ซ่อนพนักงานที่ถูกบัญชีอื่นผูกไว้แล้ว (พนักงาน 1 คนผูกได้บัญชีเดียว)
 function fillEmployeeSelect(u, isEdit){
   var takenBy = {};
   USR.list.forEach(function(x){ if(x.employee_id) takenBy[x.employee_id] = x.id; });
+
   var opts = '<option value="">— ไม่ผูก (บัญชีเข้าเว็บอย่างเดียว) —\x3c/option>';
+  // สร้างทะเบียนพนักงานพร้อมกันได้เฉพาะตอนเพิ่มบัญชีใหม่ ถ้าแก้บัญชีเดิมให้เลือกจากรายชื่อที่มีอยู่
+  if(!isEdit){ opts += '<option value="' + NEW_EMP + '">+ สร้างทะเบียนพนักงานใหม่จากชื่อนี้\x3c/option>'; }
   USR.employees.forEach(function(e){
     if(takenBy[e.id] && (!isEdit || takenBy[e.id] !== u.id)) return;
     opts += '<option value="' + _esc(e.id) + '">' + _esc(e.name)
@@ -41,12 +45,19 @@ function fillEmployeeSelect(u, isEdit){
           + (e.line_linked ? ' · ผูก LINE แล้ว' : ' · ยังไม่ผูก LINE')
           + '\x3c/option>';
   });
-  $('#usrEmployee').html(opts).val(isEdit ? (u.employee_id || '') : '');
+  $('#usrEmployee').html(opts).val(isEdit ? (u.employee_id || '') : NEW_EMP);
+
+  var dOpts = '<option value="">— ไม่ระบุ —\x3c/option>';
+  USR.departments.forEach(function(d){ dOpts += '<option value="' + _esc(d.id) + '">' + _esc(d.name) + '\x3c/option>'; });
+  $('#usrNewEmpDept').html(dOpts);
+
   updateEmpWarn();
 }
 
 function updateEmpWarn(){
-  $('#usrNoEmpWarn').toggleClass('d-none', !!$('#usrEmployee').val());
+  var v = $('#usrEmployee').val();
+  $('#usrNewEmpBox').toggleClass('d-none', v !== NEW_EMP);
+  $('#usrNoEmpWarn').toggleClass('d-none', v !== '');
 }
 
 var AUDIT_LABELS = {
@@ -159,9 +170,13 @@ function openUser(u){
   $('#usrDelegateFrom').val(isEdit ? (u.delegate_from || '') : '');
   $('#usrDelegateTo').val(isEdit ? (u.delegate_to || '') : '');
 
+  $('#usrNewEmpPhone').val('');
+  $('#usrNewEmpPrefix').val('นาย');
   fillEmployeeSelect(u, isEdit);
-  // เผื่อเปิด modal ก่อนรายชื่อพนักงานโหลดเสร็จ — โหลดแล้วเติมตัวเลือกให้อีกรอบ
-  if(!USR.employees.length){ loadEmployeeOptions().then(function(){ fillEmployeeSelect(u, isEdit); }); }
+  // เผื่อเปิด modal ก่อนรายชื่อพนักงาน/แผนกโหลดเสร็จ — โหลดแล้วเติมตัวเลือกให้อีกรอบ
+  if(!USR.employees.length || !USR.departments.length){
+    loadEmployeeOptions().then(function(){ fillEmployeeSelect(u, isEdit); });
+  }
 
   $('#usrId').val(isEdit ? u.id : '');
   $('#usrName').val(isEdit ? (u.name || '') : '');
@@ -193,12 +208,24 @@ function saveUser(){
   var delegateTo = $('#usrDelegateTo').val();
   if(delegateFrom && delegateTo && delegateTo < delegateFrom){ toast('error','วันสิ้นสุดการมอบหมายต้องไม่ก่อนวันเริ่ม'); return; }
 
+  var empSel = $('#usrEmployee').val() || '';
   var payload = {
     id: id, name: name, username: username, role: role, email: email, active: active,
-    employee_id: $('#usrEmployee').val() || '',
+    employee_id: empSel === NEW_EMP ? '' : empSel,
     delegate_user_id: $('#usrDelegate').val() || '',
     delegate_from: delegateFrom, delegate_to: delegateTo
   };
+
+  if(empSel === NEW_EMP){
+    var phone = $('#usrNewEmpPhone').val().trim();
+    if(!phone){ toast('error','กรุณาระบุเบอร์โทรของพนักงาน (ใช้ตอนผูก LINE)'); return; }
+    if(name.trim().indexOf(' ') === -1){ toast('error','กรุณากรอกชื่อและนามสกุล คั่นด้วยเว้นวรรค'); return; }
+    payload.create_employee = {
+      prefix: $('#usrNewEmpPrefix').val(),
+      department_id: $('#usrNewEmpDept').val() || '',
+      phone: phone
+    };
+  }
   if(password) payload.password = password;
 
   setBtnLoading('#btnSaveUser', true);
@@ -208,6 +235,7 @@ function saveUser(){
     if(r.status === 'success'){
       bootstrap.Modal.getInstance(document.getElementById('modalUser')).hide();
       loadUsers();
+      loadEmployeeOptions();   // อาจเพิ่งสร้างพนักงานใหม่ ต้องรีเฟรชรายชื่อ
     }
   }).catch(function(){ setBtnLoading('#btnSaveUser', false); });
 }
